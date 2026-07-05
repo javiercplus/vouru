@@ -1,0 +1,43 @@
+name: Feature Request
+description: Suggest an idea or new command for Vouru
+title: "[FEATURE] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for suggesting an improvement for Vouru. Please describe your idea in detail.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Is your suggestion related to a problem?
+      description: Tell us what the problem is. (E.g., I'm frustrated when I have to do X manually every time...)
+      placeholder: I'm trying to... but...
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Solution you'd like
+      description: Describe what you would like Vouru to do to solve this problem.
+      placeholder: It would be great if Vouru could...
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Have you considered any other ways to solve this or any alternative commands?
+    validations:
+      required: false
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional Context
+      description: Add any other context, screenshots, or examples about the feature request here.
+    validations:
+      required: false
