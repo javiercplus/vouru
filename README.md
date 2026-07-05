@@ -6,7 +6,6 @@ It automates:
 
 - Cloning `void-packages` (with `--depth 1`)
 - Running `binary-bootstrap`
-- Cloning and merging packages from the [VUR repository](https://github.com/javiercplus/vur)
 - Searching, reviewing, compiling, and installing packages
 - Checking if a package is already installed or available in the official repos
 - Offering a choice between direct `xbps-install` (from official repos) or source compilation
