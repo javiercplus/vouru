@@ -7,6 +7,9 @@ set -euo pipefail
 DEFAULT_VURU_DIR="$HOME/.local/share/pkgs/void-packages"
 CONFIG_FILE="$HOME/.voururc"
 
+# Global flag to know if void-packages was cloned in this run
+REPO_WAS_CLONED=false
+
 # Load configuration or set default
 load_config() {
     if [ -f "$CONFIG_FILE" ]; then
@@ -99,6 +102,7 @@ run_with_spinner() {
 
 # Function to ensure the void-packages repo exists
 ensure_repo() {
+    REPO_WAS_CLONED=false
     if [ ! -d "$VURU_DIR" ]; then
         echo -e "${V_MAIN}Repository not found at $VURU_DIR.${V_RST}"
         read -p "Enter path for void-packages repository (default: $DEFAULT_VURU_DIR): " input_path
@@ -113,9 +117,8 @@ ensure_repo() {
         cd "$VURU_DIR" || exit 1
         run_with_spinner "Running binary-bootstrap" ./xbps-src binary-bootstrap
         cd - >/dev/null
+        REPO_WAS_CLONED=true
     else
-        # Directory exists; we assume it's a valid void-packages repo
-        # but we may want to check if xbps-src exists; if not, maybe clone? Not needed.
         echo -e "${V_MAIN}Using existing repository at $VURU_DIR.${V_RST}"
     fi
 }
@@ -150,7 +153,7 @@ Commands:
   -h | --help             Show this help message
 
 If the main repository doesn't exist, you will be prompted for a location.
-The VUR (Void User Repository) community packages will also be cloned and copied into srcpkgs.
+The VUR (Void User Repository) community packages will only be cloned and copied on the first initialization.
 
 Examples:
   $(basename "$0") search firefox
@@ -205,7 +208,11 @@ is_pkg_in_official() {
 search_packages() {
     local query="$1"
     ensure_repo
-    clone_vur_repo
+    if [ "$REPO_WAS_CLONED" = true ]; then
+        clone_vur_repo
+    else
+        echo -e "${V_MAIN}Repository already exists. Skipping VUR clone.${V_RST}"
+    fi
     cd "$VURU_DIR" || exit 1
 
     mapfile -t MATCHES < <(find srcpkgs -maxdepth 1 -type d -name "*${query}*" -printf "%f\n" | sort -u)
@@ -228,7 +235,11 @@ search_packages() {
 install_package() {
     local query="$1"
     ensure_repo
-    clone_vur_repo
+    if [ "$REPO_WAS_CLONED" = true ]; then
+        clone_vur_repo
+    else
+        echo -e "${V_MAIN}Repository already exists. Skipping VUR clone.${V_RST}"
+    fi
     cd "$VURU_DIR" || exit 1
 
     mapfile -t MATCHES < <(find srcpkgs -maxdepth 1 -type d -name "*${query}*" -printf "%f\n" | sort -u)
@@ -298,7 +309,11 @@ install_package() {
 # Function for a full update (repository + xbps-src + system)
 update_all() {
     ensure_repo
-    clone_vur_repo
+    if [ "$REPO_WAS_CLONED" = true ]; then
+        clone_vur_repo
+    else
+        echo -e "${V_MAIN}Repository already exists. Skipping VUR clone.${V_RST}"
+    fi
     cd "$VURU_DIR" || exit 1
 
     run_with_spinner "Updating void-packages repository (git pull)" git pull origin master
@@ -322,7 +337,6 @@ clean_repo() {
     read -p "Are you sure? (y/N): " confirm
     if [[ "$confirm" =~ ^[Yy]$ ]]; then
         rm -rf "$VURU_DIR"
-        # Optionally remove config? We'll keep it.
         echo -e "${V_MAIN}Repository removed successfully.${V_RST}"
     else
         echo -e "${V_MAIN}Clean cancelled.${V_RST}"
@@ -341,7 +355,6 @@ set_repo_location() {
     fi
     # Expand ~ if present
     new_path="${new_path/#\~/$HOME}"
-    # Validate if directory exists? We can allow any path; if it doesn't exist, it will be created later.
     VURU_DIR="$new_path"
     save_config
     echo -e "${V_MAIN}Repository location set to: $VURU_DIR${V_RST}"
