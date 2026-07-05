@@ -15,6 +15,8 @@ It automates:
 
 All heavy operations (clone, bootstrap, updates) are shown with a **spinner** and logged to `~/.vouru.log` for later inspection.
 
+<img width="1280" height="768" alt="image" src="https://github.com/user-attachments/assets/fa7976fe-fa06-44ec-93d1-fda7c18308e8" />
+
 ---
 
 ## Requirements
