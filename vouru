@@ -163,13 +163,13 @@ If the main repository doesn't exist and no path is configured, it will be clone
 If a custom location is configured via 'set-repo', the repository must exist there (it will not be auto-cloned).
 
 Examples:
-  $(basename "$0") search firefox
-  $(basename "$0") -s libva
-  $(basename "$0") install vlc
-  $(basename "$0") -i mpv
-  $(basename "$0") update
-  $(basename "$0") clean
-  $(basename "$0") set-repo /path/to/my/void-packages
+  vouru search firefox
+  vouru -s libva
+  vouru install vlc
+  vouru -i mpv
+  vouru update
+  vouru clean
+  vouru set-repo /path/to/my/void-packages
 EOF
 }
 
