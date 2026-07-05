@@ -104,20 +104,28 @@ run_with_spinner() {
 ensure_repo() {
     REPO_WAS_CLONED=false
     if [ ! -d "$VURU_DIR" ]; then
-        echo -e "${V_MAIN}Repository not found at $VURU_DIR.${V_RST}"
-        read -p "Enter path for void-packages repository (default: $DEFAULT_VURU_DIR): " input_path
-        if [ -z "$input_path" ]; then
-            VURU_DIR="$DEFAULT_VURU_DIR"
+        if [ "$VURU_DIR" != "$DEFAULT_VURU_DIR" ]; then
+            # Custom path configured but missing – do NOT clone automatically
+            echo -e "${V_ERR}Error: Configured repository path '$VURU_DIR' does not exist.${V_RST}" >&2
+            echo -e "${V_ERR}Please create it manually or use 'set-repo' to change the path.${V_RST}" >&2
+            exit 1
         else
-            VURU_DIR="$input_path"
+            # Default path: prompt and clone
+            echo -e "${V_MAIN}Repository not found at $VURU_DIR.${V_RST}"
+            read -p "Enter path for void-packages repository (default: $DEFAULT_VURU_DIR): " input_path
+            if [ -z "$input_path" ]; then
+                VURU_DIR="$DEFAULT_VURU_DIR"
+            else
+                VURU_DIR="$input_path"
+            fi
+            save_config
+            echo -e "${V_MAIN}Cloning to $VURU_DIR...${V_RST}"
+            run_with_spinner "Cloning void-packages repository" git clone --depth 1 https://github.com/void-linux/void-packages.git "$VURU_DIR"
+            cd "$VURU_DIR" || exit 1
+            run_with_spinner "Running binary-bootstrap" ./xbps-src binary-bootstrap
+            cd - >/dev/null
+            REPO_WAS_CLONED=true
         fi
-        save_config
-        echo -e "${V_MAIN}Cloning to $VURU_DIR...${V_RST}"
-        run_with_spinner "Cloning void-packages repository" git clone --depth 1 https://github.com/void-linux/void-packages.git "$VURU_DIR"
-        cd "$VURU_DIR" || exit 1
-        run_with_spinner "Running binary-bootstrap" ./xbps-src binary-bootstrap
-        cd - >/dev/null
-        REPO_WAS_CLONED=true
     else
         echo -e "${V_MAIN}Using existing repository at $VURU_DIR.${V_RST}"
     fi
