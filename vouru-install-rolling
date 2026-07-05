@@ -9,29 +9,29 @@ LAUNCHER_PATH="$INSTALL_DIR/$LAUNCHER_NAME"
 REPO_URL="https://github.com/javiercplus/vouru/raw/refs/heads/main/vouru"
 TMP_LAUNCHER="$(mktemp)"
 
-# Function to run commands with available privilege escalation
+# Function to detect and use privilege escalation
 run_priv() {
     if [ -w "$INSTALL_DIR" ]; then
-        # No need for privilege
+        # No privilege needed
         "$@"
-    elif command -v sudo &>/dev/null; then
-        sudo "$@"
     elif command -v doas &>/dev/null; then
         doas "$@"
+    elif command -v sudo &>/dev/null; then
+        sudo "$@"
     elif command -v su &>/dev/null; then
         # Build a single command string for su -c
         local cmd_str
         printf -v cmd_str '%q ' "$@"
         su -c "$cmd_str"
     else
-        echo "Error: No privilege escalation tool found (sudo, doas, su)." >&2
+        echo "Error: No privilege escalation tool found (doas, sudo, su)." >&2
         echo "Please install to a writable directory, e.g.:" >&2
         echo "  INSTALL_DIR=~/.local/bin ./install-vouru.sh" >&2
         exit 1
     fi
 }
 
-# Create the launcher script content in a temporary file
+# Create the launcher script content
 cat > "$TMP_LAUNCHER" <<'EOF'
 #!/bin/bash
 # VOURU launcher - executes the latest version from GitHub
@@ -40,7 +40,6 @@ cat > "$TMP_LAUNCHER" <<'EOF'
 REPO_URL="https://github.com/javiercplus/vouru/raw/refs/heads/main/vouru"
 
 if command -v curl &>/dev/null; then
-    # Pass all arguments to the remote script
     curl -sSL "$REPO_URL" | bash -s "$@"
 else
     echo "Error: curl is required to run vouru." >&2
@@ -48,7 +47,7 @@ else
 fi
 EOF
 
-# Install the launcher using privilege escalation
+# Install the launcher
 echo "Installing VOURU launcher to $LAUNCHER_PATH ..."
 run_priv cp "$TMP_LAUNCHER" "$LAUNCHER_PATH"
 run_priv chmod +x "$LAUNCHER_PATH"
