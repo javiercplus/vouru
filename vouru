@@ -149,7 +149,7 @@ clone_vur_repo() {
 # Function to show help
 show_help() {
     cat <<EOF
-Usage: $(basename "$0") <command> [argument]
+Usage: vouru <command> [argument]
 
 Commands:
   update                  Update the void-packages repo, xbps-src, and the system
