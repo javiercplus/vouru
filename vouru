@@ -18,6 +18,8 @@ load_config() {
     else
         VURU_DIR="$DEFAULT_VURU_DIR"
     fi
+    # Expand ~ if present
+    VURU_DIR="${VURU_DIR/#\~/$HOME}"
     export VURU_DIR
 }
 
@@ -111,6 +113,8 @@ ensure_repo() {
         else
             VURU_DIR="$input_path"
         fi
+        # Expand ~ if present
+        VURU_DIR="${VURU_DIR/#\~/$HOME}"
         save_config
         echo -e "${V_MAIN}Cloning to $VURU_DIR...${V_RST}"
         run_with_spinner "Cloning void-packages repository" git clone --depth 1 https://github.com/void-linux/void-packages.git "$VURU_DIR"
@@ -329,17 +333,46 @@ update_all() {
 
 # Function to clean the entire repository
 clean_repo() {
+    # Ensure VURU_DIR is not empty
+    if [ -z "$VURU_DIR" ]; then
+        echo -e "${V_ERR}Error: VURU_DIR is empty.${V_RST}"
+        return 1
+    fi
+
+    # Expand any ~ if present (should already be expanded, but safe)
+    VURU_DIR="${VURU_DIR/#\~/$HOME}"
+
     if [ ! -d "$VURU_DIR" ]; then
         echo -e "${V_MAIN}No repository found at $VURU_DIR. Nothing to clean.${V_RST}"
         return
     fi
+
     echo -e "${V_ERR}This will remove $VURU_DIR (including all compiled packages and source).${V_RST}"
     read -p "Are you sure? (y/N): " confirm
-    if [[ "$confirm" =~ ^[Yy]$ ]]; then
-        rm -rf "$VURU_DIR"
-        echo -e "${V_MAIN}Repository removed successfully.${V_RST}"
-    else
+    if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
         echo -e "${V_MAIN}Clean cancelled.${V_RST}"
+        return
+    fi
+
+    # Try to remove without privileges first
+    if rm -rf "$VURU_DIR" 2>/dev/null; then
+        echo -e "${V_MAIN}Repository removed successfully.${V_RST}"
+        # Remove config file so next run asks for location again
+        rm -f "$CONFIG_FILE"
+        echo -e "${V_MAIN}Configuration reset.${V_RST}"
+        return
+    else
+        # If it fails, try with privilege escalation
+        echo -e "${V_MAIN}Removal failed without privileges. Trying with $PRIV_CMD...${V_RST}"
+        if run_priv rm -rf "$VURU_DIR"; then
+            echo -e "${V_MAIN}Repository removed successfully with $PRIV_CMD.${V_RST}"
+            rm -f "$CONFIG_FILE"
+            echo -e "${V_MAIN}Configuration reset.${V_RST}"
+            return
+        else
+            echo -e "${V_ERR}Error: Failed to remove $VURU_DIR. Check permissions and try manually.${V_RST}"
+            return 1
+        fi
     fi
 }
 
