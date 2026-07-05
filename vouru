@@ -3,7 +3,29 @@
 
 set -euo pipefail
 
-VURU_DIR="$HOME/.local/share/pkgs/void-packages"
+# Default location
+DEFAULT_VURU_DIR="$HOME/.local/share/pkgs/void-packages"
+CONFIG_FILE="$HOME/.voururc"
+
+# Load configuration or set default
+load_config() {
+    if [ -f "$CONFIG_FILE" ]; then
+        source "$CONFIG_FILE"
+        VURU_DIR="${VURU_DIR:-$DEFAULT_VURU_DIR}"
+    else
+        VURU_DIR="$DEFAULT_VURU_DIR"
+    fi
+    export VURU_DIR
+}
+
+# Save configuration
+save_config() {
+    echo "VURU_DIR=\"$VURU_DIR\"" > "$CONFIG_FILE"
+}
+
+# Load config at startup
+load_config
+
 VUR_REPO_DIR="$(mktemp -d)"
 VURU_LOG="$HOME/.vouru.log"
 V_MAIN="\e[1;32m" # Green
@@ -75,13 +97,26 @@ run_with_spinner() {
     return $ret
 }
 
-# Function to clone the void-packages repo and run bootstrap if it doesn't exist
+# Function to ensure the void-packages repo exists
 ensure_repo() {
     if [ ! -d "$VURU_DIR" ]; then
+        echo -e "${V_MAIN}Repository not found at $VURU_DIR.${V_RST}"
+        read -p "Enter path for void-packages repository (default: $DEFAULT_VURU_DIR): " input_path
+        if [ -z "$input_path" ]; then
+            VURU_DIR="$DEFAULT_VURU_DIR"
+        else
+            VURU_DIR="$input_path"
+        fi
+        save_config
+        echo -e "${V_MAIN}Cloning to $VURU_DIR...${V_RST}"
         run_with_spinner "Cloning void-packages repository" git clone --depth 1 https://github.com/void-linux/void-packages.git "$VURU_DIR"
         cd "$VURU_DIR" || exit 1
         run_with_spinner "Running binary-bootstrap" ./xbps-src binary-bootstrap
         cd - >/dev/null
+    else
+        # Directory exists; we assume it's a valid void-packages repo
+        # but we may want to check if xbps-src exists; if not, maybe clone? Not needed.
+        echo -e "${V_MAIN}Using existing repository at $VURU_DIR.${V_RST}"
     fi
 }
 
@@ -91,7 +126,6 @@ clone_vur_repo() {
     run_with_spinner "Cloning VUR repository" git clone --depth 1 https://github.com/javiercplus/vur.git "$VUR_REPO_DIR"
 
     echo -e "${V_MAIN}Copying VUR packages to srcpkgs...${V_RST}"
-    # Use dot notation to copy the contents of core and extra directories
     if [ -d "$VUR_REPO_DIR/core" ]; then
         cp -rf "$VUR_REPO_DIR/core/." "$VURU_DIR/srcpkgs/"
     fi
@@ -112,9 +146,10 @@ Commands:
   search | -s <term>      Search for packages in srcpkgs matching <term>
   install | -i <term>     Search for, compile, and install a package (shows template first)
   clean | -c              Remove the entire void-packages repository (free up space)
+  set-repo [path]         Set the location of the void-packages repository (if no path, prompt)
   -h | --help             Show this help message
 
-If the main repository doesn't exist, it will be cloned and binary-bootstrap will be run automatically.
+If the main repository doesn't exist, you will be prompted for a location.
 The VUR (Void User Repository) community packages will also be cloned and copied into srcpkgs.
 
 Examples:
@@ -124,6 +159,7 @@ Examples:
   $(basename "$0") -i mpv
   $(basename "$0") update
   $(basename "$0") clean
+  $(basename "$0") set-repo /path/to/my/void-packages
 EOF
 }
 
@@ -249,7 +285,6 @@ install_package() {
     review_template "srcpkgs/$PKG_NAME/template" "$PKG_NAME"
 
     echo -e "\n${V_MAIN}::${V_RST} Compiling ${V_PKG}$PKG_NAME${V_RST}..."
-    # Compilation output is shown to the user (not muted)
     if ! ./xbps-src pkg "$PKG_NAME"; then
         echo -e "\n${V_ERR}Error: Compilation of $PKG_NAME failed.${V_RST}"
         exit 1
@@ -287,10 +322,29 @@ clean_repo() {
     read -p "Are you sure? (y/N): " confirm
     if [[ "$confirm" =~ ^[Yy]$ ]]; then
         rm -rf "$VURU_DIR"
+        # Optionally remove config? We'll keep it.
         echo -e "${V_MAIN}Repository removed successfully.${V_RST}"
     else
         echo -e "${V_MAIN}Clean cancelled.${V_RST}"
     fi
+}
+
+# Function to set repository location
+set_repo_location() {
+    local new_path="$1"
+    if [ -z "$new_path" ]; then
+        read -p "Enter new path for void-packages repository: " new_path
+        if [ -z "$new_path" ]; then
+            echo -e "${V_ERR}No path provided. Aborting.${V_RST}"
+            return 1
+        fi
+    fi
+    # Expand ~ if present
+    new_path="${new_path/#\~/$HOME}"
+    # Validate if directory exists? We can allow any path; if it doesn't exist, it will be created later.
+    VURU_DIR="$new_path"
+    save_config
+    echo -e "${V_MAIN}Repository location set to: $VURU_DIR${V_RST}"
 }
 
 # --- Argument Processing ---
@@ -325,6 +379,9 @@ case "$1" in
         ;;
     clean|-c)
         clean_repo
+        ;;
+    set-repo)
+        set_repo_location "${2:-}"
         ;;
     *)
         # If an argument is given that is not a command, assume it's for installation
