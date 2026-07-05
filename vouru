@@ -9,7 +9,7 @@ CONFIG_FILE="$HOME/.voururc"
 
 # Global flag to know if void-packages was cloned in this run
 REPO_WAS_CLONED=false
-# Global flag to know if the repository path is explicitly configured
+# Global flag to know if the repository path is explicitly configured by the user
 IS_CONFIGURED=false
 
 # Load configuration or set default
@@ -117,7 +117,7 @@ ensure_repo() {
             echo -e "${V_ERR}Please verify the path or use '$(basename "$0") set-repo' to change it.${V_RST}" >&2
             exit 1
         else
-            # No path configured (using default), so clone automatically
+            # No path configured (using default), so clone automatically without asking
             echo -e "${V_MAIN}Repository not found. Cloning void-packages to default location ($VURU_DIR)...${V_RST}"
             run_with_spinner "Cloning void-packages repository" git clone --depth 1 https://github.com/void-linux/void-packages.git "$VURU_DIR"
             cd "$VURU_DIR" || exit 1
@@ -194,7 +194,8 @@ review_template() {
     fi
 
     echo "------------------------------------------------------------"
-    read -p "Do you want to continue with the compilation and installation of $pkg_name? (y/N): " confirm
+    # Read from /dev/tty to allow interaction when piped via curl | bash
+    read -p "Do you want to continue with the compilation and installation of $pkg_name? (y/N): " confirm < /dev/tty
     if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
         echo -e "${V_ERR}Operation cancelled by user.${V_RST}"
         exit 0
@@ -269,7 +270,8 @@ install_package() {
             ((i++))
         done
         echo ""
-        read -p "Select a number to install: " choice
+        # Read from /dev/tty to allow interaction when piped via curl | bash
+        read -p "Select a number to install: " choice < /dev/tty
         if ! [[ "$choice" =~ ^[0-9]+$ ]] || [ "$choice" -lt 1 ] || [ "$choice" -gt ${#MATCHES[@]} ]; then
             echo -e "${V_ERR}Invalid selection. Aborting.${V_RST}"
             exit 1
@@ -280,7 +282,8 @@ install_package() {
     # Check if already installed
     if is_pkg_installed "$PKG_NAME"; then
         echo -e "${V_MAIN}Package ${V_PKG}$PKG_NAME${V_MAIN} is already installed.${V_RST}"
-        read -p "Do you want to reinstall/rebuild it? (y/N): " reinstall_choice
+        # Read from /dev/tty
+        read -p "Do you want to reinstall/rebuild it? (y/N): " reinstall_choice < /dev/tty
         if [[ ! "$reinstall_choice" =~ ^[Yy]$ ]]; then
             echo -e "${V_ERR}Installation skipped.${V_RST}"
             exit 0
@@ -290,7 +293,8 @@ install_package() {
     # Check if available in official repos
     if is_pkg_in_official "$PKG_NAME"; then
         echo -e "${V_MAIN}Package ${V_PKG}$PKG_NAME${V_MAIN} is available in the official Void repositories.${V_RST}"
-        read -p "Install from official repos instead of compiling? (y/N): " official_choice
+        # Read from /dev/tty
+        read -p "Install from official repos instead of compiling? (y/N): " official_choice < /dev/tty
         if [[ "$official_choice" =~ ^[Yy]$ ]]; then
             echo -e "${V_MAIN}Installing from official repositories...${V_RST}"
             run_priv xbps-install -y "$PKG_NAME"
@@ -341,7 +345,8 @@ clean_repo() {
         return
     fi
     echo -e "${V_ERR}This will remove $VURU_DIR (including all compiled packages and source).${V_RST}"
-    read -p "Are you sure? (y/N): " confirm
+    # Read from /dev/tty
+    read -p "Are you sure? (y/N): " confirm < /dev/tty
     if [[ "$confirm" =~ ^[Yy]$ ]]; then
         rm -rf "$VURU_DIR"
         echo -e "${V_MAIN}Repository removed successfully.${V_RST}"
@@ -354,7 +359,8 @@ clean_repo() {
 set_repo_location() {
     local new_path="$1"
     if [ -z "$new_path" ]; then
-        read -p "Enter new path for void-packages repository: " new_path
+        # Read from /dev/tty
+        read -p "Enter new path for void-packages repository: " new_path < /dev/tty
         if [ -z "$new_path" ]; then
             echo -e "${V_ERR}No path provided. Aborting.${V_RST}"
             return 1
