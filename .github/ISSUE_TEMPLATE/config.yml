@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Consult Troubleshooting & Documentation
+    url: https://github.com/javiercplus/vouru#troubleshooting
+    about: Please check the troubleshooting section and examples in the README before opening an issue.
+  - name: Question or Discussion
+    url: https://github.com/javiercplus/vouru/discussions
+    about: If you have a question about how to use Vouru, please open a discussion instead of an issue.
