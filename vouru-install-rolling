@@ -1,25 +1,24 @@
 #!/bin/bash
 # Installer for VOURU launcher (always fetches latest from GitHub)
+# Also ensures xtools is installed.
 
 set -e
 
-# Default installation directory: user's local bin
+# Default installation directory (user's local bin, no sudo needed)
 DEFAULT_INSTALL_DIR="$HOME/.local/bin"
 INSTALL_DIR="${INSTALL_DIR:-$DEFAULT_INSTALL_DIR}"
 LAUNCHER_NAME="vouru"
 LAUNCHER_PATH="$INSTALL_DIR/$LAUNCHER_NAME"
 REPO_URL="https://github.com/javiercplus/vouru/raw/refs/heads/main/vouru"
-
-# Create temp file explicitly in /tmp
 TMP_LAUNCHER="$(mktemp -p /tmp vouru-launcher.XXXXXX)"
 
-# Clean up temp file on exit (even if script fails)
+# Cleanup trap
 cleanup() {
     rm -f "$TMP_LAUNCHER"
 }
 trap cleanup EXIT
 
-# Function to detect and use privilege escalation (only needed if we ever install system-wide)
+# Function to detect and use privilege escalation
 run_priv() {
     if [ -w "$INSTALL_DIR" ]; then
         # No privilege needed
@@ -40,7 +39,28 @@ run_priv() {
     fi
 }
 
-# Ensure installation directory exists (create if needed)
+# --- Ensure xtools is installed ---
+echo "Checking for xtools..."
+if ! xbps-query -S xtools &>/dev/null; then
+    echo "xtools not found. Installing with xbps-install..."
+    # Use privilege escalation for system package installation
+    if command -v doas &>/dev/null; then
+        doas xbps-install -y xtools
+    elif command -v sudo &>/dev/null; then
+        sudo xbps-install -y xtools
+    elif command -v su &>/dev/null; then
+        su -c "xbps-install -y xtools"
+    else
+        echo "Error: No privilege escalation tool to install xtools." >&2
+        echo "Please install xtools manually: xbps-install -S xtools" >&2
+        exit 1
+    fi
+else
+    echo "xtools is already installed."
+fi
+
+# --- Install the launcher ---
+# Ensure installation directory exists
 if [ ! -d "$INSTALL_DIR" ]; then
     echo "Creating directory: $INSTALL_DIR"
     mkdir -p "$INSTALL_DIR"
@@ -72,13 +92,13 @@ echo "Installing VOURU launcher to $LAUNCHER_PATH ..."
 run_priv cp "$TMP_LAUNCHER" "$LAUNCHER_PATH"
 run_priv chmod +x "$LAUNCHER_PATH"
 
-echo "VOURU launcher installed at $LAUNCHER_PATH"
+echo " VOURU launcher installed at $LAUNCHER_PATH"
 echo "You can now run 'vouru <command>' from anywhere."
 echo "It will always fetch the latest version from GitHub."
 
 # Check if INSTALL_DIR is in PATH
 if [[ ":$PATH:" != *":$INSTALL_DIR:"* ]]; then
-    echo "Warning: $INSTALL_DIR is not in your PATH."
+    echo "   Warning: $INSTALL_DIR is not in your PATH."
     echo "   Add it to your ~/.bashrc or ~/.profile with:"
     echo "   export PATH=\"\$HOME/.local/bin:\$PATH\""
 fi
