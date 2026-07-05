@@ -1,8 +1,6 @@
 #!/bin/bash
 # VOURU - Void User Repository helper for xbps-src
-
 set -euo pipefail
-
 # Default location
 DEFAULT_VURU_DIR="$HOME/.local/share/pkgs/void-packages"
 CONFIG_FILE="$HOME/.voururc"
