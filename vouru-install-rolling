@@ -80,8 +80,7 @@ cat > "$TMP_LAUNCHER" <<'EOF'
 REPO_URL="https://github.com/javiercplus/vouru/raw/refs/heads/main/vouru"
 
 if command -v curl &>/dev/null; then
-    # Redirige stdin desde /dev/tty para permitir interacción
-    curl -sSL "$REPO_URL" | bash -s "$@" < /dev/tty
+    curl -sSL "$REPO_URL" | bash -s "$@" 
 else
     echo "Error: curl is required to run vouru." >&2
     exit 1
