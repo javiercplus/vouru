@@ -3,13 +3,23 @@
 
 set -e
 
-INSTALL_DIR="${INSTALL_DIR:-/usr/local/bin}"
+# Default installation directory: user's local bin
+DEFAULT_INSTALL_DIR="$HOME/.local/bin"
+INSTALL_DIR="${INSTALL_DIR:-$DEFAULT_INSTALL_DIR}"
 LAUNCHER_NAME="vouru"
 LAUNCHER_PATH="$INSTALL_DIR/$LAUNCHER_NAME"
 REPO_URL="https://github.com/javiercplus/vouru/raw/refs/heads/main/vouru"
-TMP_LAUNCHER="$(mktemp)"
 
-# Function to detect and use privilege escalation
+# Create temp file explicitly in /tmp
+TMP_LAUNCHER="$(mktemp -p /tmp vouru-launcher.XXXXXX)"
+
+# Clean up temp file on exit (even if script fails)
+cleanup() {
+    rm -f "$TMP_LAUNCHER"
+}
+trap cleanup EXIT
+
+# Function to detect and use privilege escalation (only needed if we ever install system-wide)
 run_priv() {
     if [ -w "$INSTALL_DIR" ]; then
         # No privilege needed
@@ -19,7 +29,6 @@ run_priv() {
     elif command -v sudo &>/dev/null; then
         sudo "$@"
     elif command -v su &>/dev/null; then
-        # Build a single command string for su -c
         local cmd_str
         printf -v cmd_str '%q ' "$@"
         su -c "$cmd_str"
@@ -30,6 +39,17 @@ run_priv() {
         exit 1
     fi
 }
+
+# Ensure installation directory exists (create if needed)
+if [ ! -d "$INSTALL_DIR" ]; then
+    echo "Creating directory: $INSTALL_DIR"
+    mkdir -p "$INSTALL_DIR"
+fi
+
+# Check if directory is writable; if not, fallback to privilege escalation
+if [ ! -w "$INSTALL_DIR" ]; then
+    echo "Directory $INSTALL_DIR is not writable; will use privilege escalation."
+fi
 
 # Create the launcher script content
 cat > "$TMP_LAUNCHER" <<'EOF'
@@ -52,11 +72,16 @@ echo "Installing VOURU launcher to $LAUNCHER_PATH ..."
 run_priv cp "$TMP_LAUNCHER" "$LAUNCHER_PATH"
 run_priv chmod +x "$LAUNCHER_PATH"
 
-# Clean up
-rm -f "$TMP_LAUNCHER"
-
 echo "VOURU launcher installed at $LAUNCHER_PATH"
 echo "You can now run 'vouru <command>' from anywhere."
 echo "It will always fetch the latest version from GitHub."
+
+# Check if INSTALL_DIR is in PATH
+if [[ ":$PATH:" != *":$INSTALL_DIR:"* ]]; then
+    echo "Warning: $INSTALL_DIR is not in your PATH."
+    echo "   Add it to your ~/.bashrc or ~/.profile with:"
+    echo "   export PATH=\"\$HOME/.local/bin:\$PATH\""
+fi
+
 echo ""
 echo "Example: vouru search firefox"
