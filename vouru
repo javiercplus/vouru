@@ -1,0 +1,307 @@
+#!/bin/bash
+# VOURU - Void User Repository helper for xbps-src
+
+set -euo pipefail
+
+VURU_DIR="$HOME/.local/share/pkgs/void-packages"
+VUR_REPO_DIR="$(mktemp -d)"
+VURU_LOG="$HOME/.vouru.log"
+V_MAIN="\e[1;32m" # Green
+V_PKG="\e[1;34m"  # Blue
+V_ERR="\e[1;31m"  # Red
+V_RST="\e[0m"     # Default
+
+# Ensure log directory exists and start fresh with a timestamp
+echo "=== VOURU Log started at $(date) ===" >> "$VURU_LOG"
+
+# Check for required dependencies
+VURU_REQUIRED=("git" "xtools")
+for check in "${VURU_REQUIRED[@]}"; do
+    if ! xbps-query -S "$check" &>/dev/null; then
+        echo -e "${V_ERR}Error: '$check' is not installed.${V_RST}" >&2
+        exit 1
+    fi
+done
+
+# Detect privilege command (doas or sudo)
+PRIV_CMD=""
+if command -v doas &>/dev/null; then
+    PRIV_CMD="doas"
+elif command -v sudo &>/dev/null; then
+    PRIV_CMD="sudo"
+else
+    echo -e "${V_ERR}Error: Neither 'doas' nor 'sudo' found.${V_RST}" >&2
+    exit 1
+fi
+
+# Function to run commands with privileges
+run_priv() {
+    "$PRIV_CMD" "$@"
+}
+
+# Spinner function: shows a rotating indicator while a background job runs
+spinner() {
+    local pid=$1
+    local msg=$2
+    local spin='-\|/'
+    local i=0
+    while kill -0 $pid 2>/dev/null; do
+        i=$(( (i+1) % 4 ))
+        printf "\r[%c] %s" "${spin:$i:1}" "$msg"
+        sleep 0.15
+    done
+    wait $pid
+    local exit_code=$?
+    if [ $exit_code -eq 0 ]; then
+        printf "\r[✓] %s\n" "$msg"
+    else
+        printf "\r[✗] %s\n" "$msg"
+    fi
+    return $exit_code
+}
+
+# Run a command with output redirected to the log and show a spinner
+run_with_spinner() {
+    local msg="$1"
+    shift
+    echo "--- Running: $* ---" >> "$VURU_LOG"
+    ( "$@" >> "$VURU_LOG" 2>&1 ) &
+    local pid=$!
+    spinner $pid "$msg"
+    local ret=$?
+    if [ $ret -ne 0 ]; then
+        echo -e "${V_ERR}Command failed. Check $VURU_LOG for details.${V_RST}" >&2
+    fi
+    return $ret
+}
+
+# Function to clone the void-packages repo and run bootstrap if it doesn't exist
+ensure_repo() {
+    if [ ! -d "$VURU_DIR" ]; then
+        run_with_spinner "Cloning void-packages repository" git clone --depth 1 https://github.com/void-linux/void-packages.git "$VURU_DIR"
+        cd "$VURU_DIR" || exit 1
+        run_with_spinner "Running binary-bootstrap" ./xbps-src binary-bootstrap
+        cd - >/dev/null
+    fi
+}
+
+# Function to clone the VUR repository and copy packages
+clone_vur_repo() {
+    echo -e "${V_MAIN}Cloning VUR repository...${V_RST}"
+    run_with_spinner "Cloning VUR repository" git clone --depth 1 https://github.com/javiercplus/vur.git "$VUR_REPO_DIR"
+
+    echo -e "${V_MAIN}Copying VUR packages to srcpkgs...${V_RST}"
+    cp -rf "$VUR_REPO_DIR/core/"* "$VURU_DIR/srcpkgs/" 2>/dev/null || true
+    cp -rf "$VUR_REPO_DIR/extra/"* "$VURU_DIR/srcpkgs/" 2>/dev/null || true
+    echo -e "${V_MAIN}VUR packages copied successfully.${V_RST}"
+    rm -rf "$VUR_REPO_DIR"
+}
+
+# Function to show help
+show_help() {
+    cat <<EOF
+Usage: $(basename "$0") <command> [argument]
+
+Commands:
+  update                  Update the void-packages repo, xbps-src, and the system
+  search | -s <term>      Search for packages in srcpkgs matching <term>
+  install | -i <term>     Search for, compile, and install a package (shows template first)
+  -h | --help             Show this help message
+
+If the main repository doesn't exist, it will be cloned and binary-bootstrap will be run automatically.
+The VUR (Void User Repository) community packages will also be cloned and copied into srcpkgs.
+
+Examples:
+  $(basename "$0") search firefox
+  $(basename "$0") -s libva
+  $(basename "$0") install vlc
+  $(basename "$0") -i mpv
+  $(basename "$0") update
+EOF
+}
+
+# Function to show the template and ask for confirmation
+review_template() {
+    local template_file="$1"
+    local pkg_name="$2"
+
+    if [ ! -f "$template_file" ]; then
+        echo -e "${V_ERR}Error: Template file for $pkg_name not found.${V_RST}"
+        exit 1
+    fi
+
+    echo -e "${V_MAIN}Showing template for ${V_PKG}$pkg_name${V_MAIN}:${V_RST}"
+    echo "------------------------------------------------------------"
+
+    if command -v less &>/dev/null; then
+        less -R "$template_file"
+    else
+        cat "$template_file"
+        echo -e "${V_ERR}Note: 'less' is not installed. It is recommended for better viewing.${V_RST}"
+    fi
+
+    echo "------------------------------------------------------------"
+    read -p "Do you want to continue with the compilation and installation of $pkg_name? (y/N): " confirm
+    if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
+        echo -e "${V_ERR}Operation cancelled by user.${V_RST}"
+        exit 0
+    fi
+}
+
+# Check if package is already installed
+is_pkg_installed() {
+    xbps-query "$1" &>/dev/null
+}
+
+# Check if package exists in official repos
+is_pkg_in_official() {
+    xbps-query -Rs "$1" 2>/dev/null | grep -q "^$1-"
+}
+
+# Function to search for packages (list only)
+search_packages() {
+    local query="$1"
+    ensure_repo
+    clone_vur_repo
+    cd "$VURU_DIR" || exit 1
+
+    mapfile -t MATCHES < <(find srcpkgs -maxdepth 1 -type d -name "*${query}*" -printf "%f\n" | sort -u)
+
+    if [ ${#MATCHES[@]} -eq 0 ]; then
+        echo -e "${V_ERR}No packages found matching '$query'.${V_RST}"
+        return 1
+    fi
+
+    echo -e "${V_MAIN}Matches for '$query':${V_RST}"
+    local i=1
+    for pkg in "${MATCHES[@]}"; do
+        desc=$(grep -m 1 "^short_desc=" "srcpkgs/$pkg/template" 2>/dev/null | cut -d= -f2- | tr -d "\"'")
+        echo -e "  ${V_MAIN}$i.${V_RST} ${V_PKG}$pkg${V_RST} - ${desc:-No description}"
+        ((i++))
+    done
+}
+
+# Function to install a package (search, compile, install)
+install_package() {
+    local query="$1"
+    ensure_repo
+    clone_vur_repo
+    cd "$VURU_DIR" || exit 1
+
+    mapfile -t MATCHES < <(find srcpkgs -maxdepth 1 -type d -name "*${query}*" -printf "%f\n" | sort -u)
+
+    if [ ${#MATCHES[@]} -eq 0 ]; then
+        echo -e "${V_ERR}Error: No package found for '$query'.${V_RST}"
+        exit 1
+    fi
+
+    local PKG_NAME
+    if [ ${#MATCHES[@]} -eq 1 ]; then
+        PKG_NAME="${MATCHES[0]}"
+        echo -e "${V_MAIN}Package found:${V_RST} ${V_PKG}$PKG_NAME${V_RST}"
+    else
+        echo -e "${V_MAIN}Multiple matches found:${V_RST}"
+        local i=1
+        for pkg in "${MATCHES[@]}"; do
+            desc=$(grep -m 1 "^short_desc=" "srcpkgs/$pkg/template" 2>/dev/null | cut -d= -f2- | tr -d "\"'")
+            echo -e "  ${V_MAIN}$i.${V_RST} ${V_PKG}$pkg${V_RST} - ${desc:-No description}"
+            ((i++))
+        done
+        echo ""
+        read -p "Select a number to install: " choice
+        if ! [[ "$choice" =~ ^[0-9]+$ ]] || [ "$choice" -lt 1 ] || [ "$choice" -gt ${#MATCHES[@]} ]; then
+            echo -e "${V_ERR}Invalid selection. Aborting.${V_RST}"
+            exit 1
+        fi
+        PKG_NAME="${MATCHES[$((choice-1))]}"
+    fi
+
+    # Check if already installed
+    if is_pkg_installed "$PKG_NAME"; then
+        echo -e "${V_MAIN}Package ${V_PKG}$PKG_NAME${V_MAIN} is already installed.${V_RST}"
+        read -p "Do you want to reinstall/rebuild it? (y/N): " reinstall_choice
+        if [[ ! "$reinstall_choice" =~ ^[Yy]$ ]]; then
+            echo -e "${V_ERR}Installation skipped.${V_RST}"
+            exit 0
+        fi
+    fi
+
+    # Check if available in official repos
+    if is_pkg_in_official "$PKG_NAME"; then
+        echo -e "${V_MAIN}Package ${V_PKG}$PKG_NAME${V_MAIN} is available in the official Void repositories.${V_RST}"
+        read -p "Install from official repos instead of compiling? (y/N): " official_choice
+        if [[ "$official_choice" =~ ^[Yy]$ ]]; then
+            echo -e "${V_MAIN}Installing from official repositories...${V_RST}"
+            run_priv xbps-install -y "$PKG_NAME"
+            echo -e "${V_MAIN}Installation from official repos completed.${V_RST}"
+            exit 0
+        fi
+    fi
+
+    # Review the template before compiling
+    review_template "srcpkgs/$PKG_NAME/template" "$PKG_NAME"
+
+    echo -e "\n${V_MAIN}::${V_RST} Compiling ${V_PKG}$PKG_NAME${V_RST}..."
+    # Compilation output is shown to the user (not muted)
+    if ! ./xbps-src pkg "$PKG_NAME"; then
+        echo -e "\n${V_ERR}Error: Compilation of $PKG_NAME failed.${V_RST}"
+        exit 1
+    fi
+
+    echo -e "\n${V_MAIN}:: Compilation successful. Installing...${V_RST}"
+    run_priv xbps-install -y --repository hostdir/binpkgs "$PKG_NAME"
+    echo -e "\n${V_MAIN}:: $PKG_NAME installed successfully.${V_RST}"
+}
+
+# Function for a full update (repository + xbps-src + system)
+update_all() {
+    ensure_repo
+    clone_vur_repo
+    cd "$VURU_DIR" || exit 1
+
+    run_with_spinner "Updating void-packages repository (git pull)" git pull origin master
+    run_with_spinner "Running bootstrap-update" ./xbps-src bootstrap-update
+    run_with_spinner "Updating packages with xbps-src (update-sys)" ./xbps-src update-sys
+
+    echo -e "${V_MAIN}xbps-src updated.${V_RST}"
+    echo -e "${V_MAIN}\nUpdating system with xbps-install...${V_RST}"
+    run_priv xbps-install -Su
+    cd - >/dev/null
+    echo -e "${V_MAIN}Update complete.${V_RST}"
+}
+
+# --- Argument Processing ---
+if [ $# -eq 0 ]; then
+    show_help
+    exit 0
+fi
+
+case "$1" in
+    -h|--help)
+        show_help
+        exit 0
+        ;;
+    update)
+        update_all
+        ;;
+    search|-s)
+        if [ -z "$2" ]; then
+            echo -e "${V_ERR}Error: Missing search term.${V_RST}"
+            show_help
+            exit 1
+        fi
+        search_packages "$2"
+        ;;
+    install|-i)
+        if [ -z "$2" ]; then
+            echo -e "${V_ERR}Error: Missing package name.${V_RST}"
+            show_help
+            exit 1
+        fi
+        install_package "$2"
+        ;;
+    *)
+        # If an argument is given that is not a command, assume it's for installation
+        install_package "$1"
+        ;;
+esac
