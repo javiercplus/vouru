@@ -1,0 +1,82 @@
+name: Bug Report
+description: Report a problem or error when running Vouru
+title: "[BUG] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug in Vouru. Please complete the following information so we can help you.
+        **Note:** Compilation operations are not muted; if a package build failed, please check the output before reporting.
+
+  - type: dropdown
+    id: installation-method
+    attributes:
+      label: Installation Method
+      description: How did you install Vouru?
+      options:
+        - Rolling Installer (Recommended)
+        - Online One-Liner (curl | bash)
+        - Manual (Static local copy)
+    validations:
+      required: true
+
+  - type: input
+    id: command
+    attributes:
+      label: Command executed
+      description: What exact command did you run? (e.g., `vouru install firefox`)
+      placeholder: "vouru ..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected-behavior
+    attributes:
+      label: Expected Behavior
+      description: What did you expect to happen?
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual-behavior
+    attributes:
+      label: Actual Behavior
+      description: What happened instead? If there was a terminal error, please paste it here.
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant Log (~/.vouru.log)
+      description: |
+        Please paste the relevant content from your log file. 
+        You can get the latest lines by running: `tail -n 50 ~/.vouru.log`
+      render: bash
+    validations:
+      required: false
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: System Environment
+      description: Help us reproduce the problem. You can get this info with `uname -m && cat /etc/os-release`
+      value: |
+        - Architecture: (e.g., x86_64, aarch64, musl)
+        - Void Version: 
+        - Shell in use: (bash, zsh, etc.)
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: pre-checks
+    attributes:
+      label: Pre-checks
+      options:
+        - label: I have checked the [Troubleshooting](https://github.com/javiercplus/vouru#troubleshooting) section in the README.
+          required: true
+        - label: I have verified that I have `git`, `xtools`, and `doas`/`sudo` installed.
+          required: true
+        - label: I am NOT reporting a package compilation error (that is the responsibility of the template maintainer in void-packages).
+          required: false
