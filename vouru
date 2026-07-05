@@ -106,14 +106,22 @@ run_with_spinner() {
 ensure_repo() {
     REPO_WAS_CLONED=false
     if [ ! -d "$VURU_DIR" ]; then
-        echo -e "${V_MAIN}Repository not found at $VURU_DIR.${V_RST}"
-        read -p "Enter path for void-packages repository (default: $DEFAULT_VURU_DIR): " input_path
+        # Detect if we are in a non-interactive environment (e.g., piped from curl)
+        if [ -t 0 ]; then
+            # Interactive terminal: normal read
+            read -p "Enter path for void-packages repository (default: $DEFAULT_VURU_DIR): " input_path
+        else
+            # Non-interactive: force read from /dev/tty
+            echo -e "${V_MAIN}Enter path for void-packages repository (default: $DEFAULT_VURU_DIR): ${V_RST}" > /dev/tty
+            read input_path < /dev/tty
+        fi
+
         if [ -z "$input_path" ]; then
             VURU_DIR="$DEFAULT_VURU_DIR"
         else
             VURU_DIR="$input_path"
         fi
-        # Expand ~ if present
+        # Expand ~ if present in the input path
         VURU_DIR="${VURU_DIR/#\~/$HOME}"
         save_config
         echo -e "${V_MAIN}Cloning to $VURU_DIR...${V_RST}"
