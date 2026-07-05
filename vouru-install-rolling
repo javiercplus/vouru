@@ -96,11 +96,25 @@ echo " VOURU launcher installed at $LAUNCHER_PATH"
 echo "You can now run 'vouru <command>' from anywhere."
 echo "It will always fetch the latest version from GitHub."
 
-# Check if INSTALL_DIR is in PATH
+# --- Detect shell and suggest PATH addition if needed ---
 if [[ ":$PATH:" != *":$INSTALL_DIR:"* ]]; then
-    echo "   Warning: $INSTALL_DIR is not in your PATH."
-    echo "   Add it to your ~/.bashrc or ~/.profile with:"
+    # Determine which shell config file to suggest
+    SHELL_NAME="$(basename "$SHELL")"
+    case "$SHELL_NAME" in
+        zsh)
+            RC_FILE="$HOME/.zshrc"
+            ;;
+        bash)
+            RC_FILE="$HOME/.bashrc"
+            ;;
+        *)
+            RC_FILE="~/.profile or ~/.bashrc"
+            ;;
+    esac
+    echo "  Warning: $INSTALL_DIR is not in your PATH."
+    echo "   Add it to your $RC_FILE with:"
     echo "   export PATH=\"\$HOME/.local/bin:\$PATH\""
+    echo "   Then restart your shell or run: source $RC_FILE"
 fi
 
 echo ""
