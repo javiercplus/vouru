@@ -36,7 +36,6 @@ save_config() {
 # Load config at startup
 load_config
 
-VUR_REPO_DIR="$(mktemp -d)"
 VURU_LOG="$HOME/.vouru.log"
 V_MAIN="\e[1;32m" # Green
 V_PKG="\e[1;34m"  # Blue
@@ -130,22 +129,6 @@ ensure_repo() {
     fi
 }
 
-# Function to clone the VUR repository and copy packages
-clone_vur_repo() {
-    echo -e "${V_MAIN}Cloning VUR repository...${V_RST}"
-    run_with_spinner "Cloning VUR repository" git clone --depth 1 https://github.com/javiercplus/vur.git "$VUR_REPO_DIR"
-
-    echo -e "${V_MAIN}Copying VUR packages to srcpkgs...${V_RST}"
-    if [ -d "$VUR_REPO_DIR/core" ]; then
-        cp -rf "$VUR_REPO_DIR/core/." "$VURU_DIR/srcpkgs/"
-    fi
-    if [ -d "$VUR_REPO_DIR/extra" ]; then
-        cp -rf "$VUR_REPO_DIR/extra/." "$VURU_DIR/srcpkgs/"
-    fi
-    echo -e "${V_MAIN}VUR packages copied successfully.${V_RST}"
-    rm -rf "$VUR_REPO_DIR"
-}
-
 # Function to show help
 show_help() {
     cat <<EOF
@@ -216,11 +199,6 @@ is_pkg_in_official() {
 search_packages() {
     local query="$1"
     ensure_repo
-    if [ "$REPO_WAS_CLONED" = true ]; then
-        clone_vur_repo
-    else
-        echo -e "${V_MAIN}Repository already exists. Skipping VUR clone.${V_RST}"
-    fi
     cd "$VURU_DIR" || exit 1
 
     mapfile -t MATCHES < <(find srcpkgs -maxdepth 1 -type d -name "*${query}*" -printf "%f\n" | sort -u)
@@ -243,11 +221,6 @@ search_packages() {
 install_package() {
     local query="$1"
     ensure_repo
-    if [ "$REPO_WAS_CLONED" = true ]; then
-        clone_vur_repo
-    else
-        echo -e "${V_MAIN}Repository already exists. Skipping VUR clone.${V_RST}"
-    fi
     cd "$VURU_DIR" || exit 1
 
     mapfile -t MATCHES < <(find srcpkgs -maxdepth 1 -type d -name "*${query}*" -printf "%f\n" | sort -u)
@@ -320,11 +293,6 @@ install_package() {
 # Function for a full update (repository + xbps-src + system)
 update_all() {
     ensure_repo
-    if [ "$REPO_WAS_CLONED" = true ]; then
-        clone_vur_repo
-    else
-        echo -e "${V_MAIN}Repository already exists. Skipping VUR clone.${V_RST}"
-    fi
     cd "$VURU_DIR" || exit 1
 
     run_with_spinner "Updating void-packages repository (git pull)" git pull origin master
