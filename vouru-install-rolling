@@ -1,0 +1,43 @@
+#!/bin/bash
+# Installer for VOURU launcher (always fetches latest from GitHub)
+
+set -e
+
+INSTALL_DIR="${INSTALL_DIR:-/usr/local/bin}"
+LAUNCHER_NAME="vouru"
+LAUNCHER_PATH="$INSTALL_DIR/$LAUNCHER_NAME"
+REPO_URL="https://github.com/javiercplus/vouru/raw/refs/heads/main/vouru"
+
+# Check if we have write permission to INSTALL_DIR
+if [ ! -w "$INSTALL_DIR" ]; then
+    echo "Need sudo to install to $INSTALL_DIR"
+    SUDO="sudo"
+else
+    SUDO=""
+fi
+
+# Create the launcher script
+$SUDO tee "$LAUNCHER_PATH" > /dev/null <<'EOF'
+#!/bin/bash
+# VOURU launcher - executes the latest version from GitHub
+# This script is auto-generated; do not edit directly.
+
+REPO_URL="https://github.com/javiercplus/vouru/raw/refs/heads/main/vouru"
+
+if command -v curl &>/dev/null; then
+    # Pass all arguments to the remote script
+    curl -sSL "$REPO_URL" | bash -s "$@"
+else
+    echo "Error: curl is required to run vouru." >&2
+    exit 1
+fi
+EOF
+
+# Make it executable
+$SUDO chmod +x "$LAUNCHER_PATH"
+
+echo "VOURU launcher installed at $LAUNCHER_PATH"
+echo "You can now run 'vouru <command>' from anywhere."
+echo "It will always fetch the latest version from GitHub."
+echo ""
+echo "Example: vouru search firefox"
