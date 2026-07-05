@@ -91,6 +91,7 @@ clone_vur_repo() {
     run_with_spinner "Cloning VUR repository" git clone --depth 1 https://github.com/javiercplus/vur.git "$VUR_REPO_DIR"
 
     echo -e "${V_MAIN}Copying VUR packages to srcpkgs...${V_RST}"
+    # Use dot notation to copy the contents of core and extra directories
     if [ -d "$VUR_REPO_DIR/core" ]; then
         cp -rf "$VUR_REPO_DIR/core/." "$VURU_DIR/srcpkgs/"
     fi
@@ -110,6 +111,7 @@ Commands:
   update                  Update the void-packages repo, xbps-src, and the system
   search | -s <term>      Search for packages in srcpkgs matching <term>
   install | -i <term>     Search for, compile, and install a package (shows template first)
+  clean | -c              Remove the entire void-packages repository (free up space)
   -h | --help             Show this help message
 
 If the main repository doesn't exist, it will be cloned and binary-bootstrap will be run automatically.
@@ -121,6 +123,7 @@ Examples:
   $(basename "$0") install vlc
   $(basename "$0") -i mpv
   $(basename "$0") update
+  $(basename "$0") clean
 EOF
 }
 
@@ -274,6 +277,22 @@ update_all() {
     echo -e "${V_MAIN}Update complete.${V_RST}"
 }
 
+# Function to clean the entire repository
+clean_repo() {
+    if [ ! -d "$VURU_DIR" ]; then
+        echo -e "${V_MAIN}No repository found at $VURU_DIR. Nothing to clean.${V_RST}"
+        return
+    fi
+    echo -e "${V_ERR}This will remove $VURU_DIR (including all compiled packages and source).${V_RST}"
+    read -p "Are you sure? (y/N): " confirm
+    if [[ "$confirm" =~ ^[Yy]$ ]]; then
+        rm -rf "$VURU_DIR"
+        echo -e "${V_MAIN}Repository removed successfully.${V_RST}"
+    else
+        echo -e "${V_MAIN}Clean cancelled.${V_RST}"
+    fi
+}
+
 # --- Argument Processing ---
 if [ $# -eq 0 ]; then
     show_help
@@ -303,6 +322,9 @@ case "$1" in
             exit 1
         fi
         install_package "$2"
+        ;;
+    clean|-c)
+        clean_repo
         ;;
     *)
         # If an argument is given that is not a command, assume it's for installation
