@@ -9,12 +9,19 @@ CONFIG_FILE="$HOME/.voururc"
 
 # Global flag to know if void-packages was cloned in this run
 REPO_WAS_CLONED=false
+# Global flag to know if the repository path is explicitly configured
+IS_CONFIGURED=false
 
 # Load configuration or set default
 load_config() {
     if [ -f "$CONFIG_FILE" ]; then
         source "$CONFIG_FILE"
-        VURU_DIR="${VURU_DIR:-$DEFAULT_VURU_DIR}"
+        # If VURU_DIR is set and not empty in the config, then it's explicitly configured
+        if [ -n "${VURU_DIR:-}" ]; then
+            IS_CONFIGURED=true
+        else
+            VURU_DIR="$DEFAULT_VURU_DIR"
+        fi
     else
         VURU_DIR="$DEFAULT_VURU_DIR"
     fi
@@ -104,22 +111,14 @@ run_with_spinner() {
 ensure_repo() {
     REPO_WAS_CLONED=false
     if [ ! -d "$VURU_DIR" ]; then
-        if [ "$VURU_DIR" != "$DEFAULT_VURU_DIR" ]; then
-            # Custom path configured but missing – do NOT clone automatically
-            echo -e "${V_ERR}Error: Configured repository path '$VURU_DIR' does not exist.${V_RST}" >&2
-            echo -e "${V_ERR}Please create it manually or use 'set-repo' to change the path.${V_RST}" >&2
+        if [ "$IS_CONFIGURED" = true ]; then
+            # If a custom path was configured but doesn't exist, do not clone, just error out.
+            echo -e "${V_ERR}Error: Configured void-packages repository at '$VURU_DIR' not found.${V_RST}" >&2
+            echo -e "${V_ERR}Please verify the path or use '$(basename "$0") set-repo' to change it.${V_RST}" >&2
             exit 1
         else
-            # Default path: prompt and clone
-            echo -e "${V_MAIN}Repository not found at $VURU_DIR.${V_RST}"
-            read -p "Enter path for void-packages repository (default: $DEFAULT_VURU_DIR): " input_path
-            if [ -z "$input_path" ]; then
-                VURU_DIR="$DEFAULT_VURU_DIR"
-            else
-                VURU_DIR="$input_path"
-            fi
-            save_config
-            echo -e "${V_MAIN}Cloning to $VURU_DIR...${V_RST}"
+            # No path configured (using default), so clone automatically
+            echo -e "${V_MAIN}Repository not found. Cloning void-packages to default location ($VURU_DIR)...${V_RST}"
             run_with_spinner "Cloning void-packages repository" git clone --depth 1 https://github.com/void-linux/void-packages.git "$VURU_DIR"
             cd "$VURU_DIR" || exit 1
             run_with_spinner "Running binary-bootstrap" ./xbps-src binary-bootstrap
@@ -160,8 +159,8 @@ Commands:
   set-repo [path]         Set the location of the void-packages repository (if no path, prompt)
   -h | --help             Show this help message
 
-If the main repository doesn't exist, you will be prompted for a location.
-The VUR (Void User Repository) community packages will only be cloned and copied on the first initialization.
+If the main repository doesn't exist and no path is configured, it will be cloned to the default location.
+If a custom location is configured via 'set-repo', the repository must exist there (it will not be auto-cloned).
 
 Examples:
   $(basename "$0") search firefox
@@ -365,6 +364,7 @@ set_repo_location() {
     new_path="${new_path/#\~/$HOME}"
     VURU_DIR="$new_path"
     save_config
+    IS_CONFIGURED=true
     echo -e "${V_MAIN}Repository location set to: $VURU_DIR${V_RST}"
 }
 
