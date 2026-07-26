@@ -134,6 +134,7 @@ Usage: vouru <command> [argument]
 
 Commands:
   update                  Update the void-packages repo, xbps-src, and the system
+  add <git-url>          Clone a git repository and copy template folders into srcpkgs
   search | -s <term>      Search for packages in srcpkgs matching <term>
   install | -i <term>     Search for, compile, and install a package (shows template first)
   clean | -c              Remove the entire void-packages repository (free up space)
@@ -144,6 +145,7 @@ If the main repository doesn't exist and no path is configured, it will be clone
 If a custom location is configured via 'set-repo', the repository must exist there (it will not be auto-cloned).
 
 Examples:
+  vouru add https://github.com/user/vour-packages
   vouru search firefox
   vouru -s libva
   vouru install vlc
@@ -340,6 +342,70 @@ set_repo_location() {
     echo -e "${V_MAIN}Repository location set to: $VURU_DIR${V_RST}"
 }
 
+# Function to add templates from a git repository
+add_template() {
+    local repo_url="$1"
+    ensure_repo
+    cd "$VURU_DIR" || exit 1
+
+    local tmp_dir
+    tmp_dir="$(mktemp -d)"
+
+    echo -e "${V_MAIN}Cloning template repository...${V_RST}"
+    if ! git clone "$repo_url" "$tmp_dir" >> "$VURU_LOG" 2>&1; then
+        echo -e "${V_ERR}Error: Failed to clone repository '$repo_url'.${V_RST}" >&2
+        rm -rf "$tmp_dir"
+        exit 1
+    fi
+
+    mapfile -t TEMPLATE_FILES < <(find "$tmp_dir" -maxdepth 4 -type f -name "template" | sort -u)
+
+    if [ ${#TEMPLATE_FILES[@]} -eq 0 ]; then
+        echo -e "${V_ERR}Error: No 'template' file found in the repository.${V_RST}" >&2
+        rm -rf "$tmp_dir"
+        exit 1
+    fi
+
+    local added=0
+    for template_file in "${TEMPLATE_FILES[@]}"; do
+        local template_dir
+        template_dir="$(dirname "$template_file")"
+
+        # Determine package name:
+        # 1. If template is at root of tmp_dir, extract pkgname from the template file
+        # 2. Otherwise, use the basename of the directory containing the template
+        local pkg_name
+        if [ "$template_dir" = "$tmp_dir" ]; then
+            local raw_name
+            raw_name="$(grep -m1 '^pkgname=' "$template_file" | cut -d= -f2-)"
+            # Strip quotes from the package name
+            raw_name="${raw_name//\"/}"
+            pkg_name="${raw_name//\'/}"
+            if [ -z "$pkg_name" ]; then
+                echo -e "${V_ERR}Error: Template at root has no 'pkgname=' field. Cannot determine package name.${V_RST}" >&2
+                continue
+            fi
+        else
+            pkg_name="$(basename "$template_dir")"
+        fi
+
+        if [ -d "srcpkgs/$pkg_name" ]; then
+            echo -e "${V_ERR}Warning: Package '$pkg_name' already exists in srcpkgs. Skipping.${V_RST}"
+            continue
+        fi
+        cp -r "$template_dir" "srcpkgs/$pkg_name"
+        echo -e "${V_MAIN}Added package ${V_PKG}$pkg_name${V_MAIN} from $repo_url${V_RST}"
+        ((added++))
+    done
+
+    rm -rf "$tmp_dir"
+
+    if [ "$added" -eq 0 ]; then
+        echo -e "${V_ERR}No new packages were added (all already exist or no templates found).${V_RST}" >&2
+        exit 1
+    fi
+}
+
 # --- Argument Processing ---
 if [ $# -eq 0 ]; then
     show_help
@@ -375,6 +441,14 @@ case "$1" in
         ;;
     set-repo)
         set_repo_location "${2:-}"
+        ;;
+    add)
+        if [ -z "$2" ]; then
+            echo -e "${V_ERR}Error: Missing git repository URL.${V_RST}"
+            show_help
+            exit 1
+        fi
+        add_template "$2"
         ;;
     *)
         # If an argument is given that is not a command, assume it's for installation

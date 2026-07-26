@@ -81,6 +81,7 @@ Now you can run it as `vouru <command>`.
 
 | Command                    | Description |
 |----------------------------|-------------|
+| `vouru add <git-url>`       | Clone a git repository and add its template(s) to `srcpkgs`. Detects `template` files both in subdirectories (standard VUR layout) and at the repository root (extracting the package name from `pkgname=`). Skips any package that already exists. |
 | `vouru search <term>`      | Search for packages in `srcpkgs` that match `<term>` (case‑insensitive, partial match). Lists all found packages with their descriptions. Does **not** compile or install. |
 | `vouru install <term>`     | Look for `<term>`; if multiple matches, ask which one to install. Then: <br> • Check if already installed → offer to reinstall <br> • Check if available in official repos → offer to install directly (fast) <br> • Otherwise, show the `template` file, ask for confirmation, compile with `xbps-src pkg`, and install. |
 | `vouru update`             | Update the `void-packages` repo (`git pull`), run `bootstrap-update`, run `update-sys`, and finally update the whole system with `xbps-install -Su`. |
@@ -92,7 +93,8 @@ Now you can run it as `vouru <command>`.
 **Aliases:**  
 - `search` ↔ `-s`  
 - `install` ↔ `-i`  
-- `clean` ↔ `-c`
+- `clean` ↔ `-c`  
+- `add` ↔ `-a`
 
 ---
 
@@ -120,6 +122,9 @@ vouru clean
 # Set a custom repository location
 vouru set-repo /home/user/my-void-packages
 
+# Add templates from a VUR repository (e.g. zig-nk from codeberg)
+vouru add https://codeberg.org/Neko-Void/zig-nk.git
+
 # Run online without installing
 curl -sSL https://github.com/javiercplus/vouru/raw/refs/heads/main/vouru | bash -s search firefox
 ```
@@ -136,7 +141,8 @@ curl -sSL https://github.com/javiercplus/vouru/raw/refs/heads/main/vouru | bash 
    - Clones the VUR repo and copies `core/*` and `extra/*` into `srcpkgs/`.
 3. **Subsequent runs** – if the repository already exists, Vouru skips cloning and bootstrapping, and does **not** clone VUR again (to avoid unnecessary network traffic).
 4. **Search** – uses `find` on `srcpkgs/` to list matching directories and reads their `short_desc`.
-5. **Installation flow**:
+5. **Add** (`vouru add <git-url>`) – clones the given repository, scans for `template` files up to 4 levels deep, and copies each template's directory into `srcpkgs/`. If a template is at the repository root, the package name is read from the `pkgname=` field; otherwise, the subdirectory name is used. Already existing packages are skipped.
+6. **Installation flow**:
    - If the package is **already installed**, you are asked whether to rebuild/reinstall.
    - If the package is **available in the official repositories** (`xbps-query -Rs`), you are offered to install it directly via `xbps-install` (skipping compilation).
    - If you choose compilation, the `template` file is shown with `less` (or `cat`), and you confirm before proceeding.
