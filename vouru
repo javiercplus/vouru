@@ -124,6 +124,9 @@ ensure_repo() {
         fi
     else
         echo -e "${V_MAIN}Using existing repository at $VURU_DIR.${V_RST}"
+        cd "$VURU_DIR" || exit 1
+        run_with_spinner "Updating void-packages repository (git pull)" git pull origin master
+        cd - >/dev/null
     fi
 }
 
@@ -295,7 +298,7 @@ update_all() {
     ensure_repo
     cd "$VURU_DIR" || exit 1
 
-    run_with_spinner "Updating void-packages repository (git pull)" git pull origin master
+    # Note: git pull is already done by ensure_repo
     run_with_spinner "Running bootstrap-update" ./xbps-src bootstrap-update
     run_with_spinner "Updating packages with xbps-src (update-sys)" ./xbps-src update-sys
 
