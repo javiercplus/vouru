@@ -85,7 +85,8 @@ Now you can run it as `vouru <command>`.
 | `vouru search <term>`      | Search for packages in `srcpkgs` that match `<term>` (case‑insensitive, partial match). Lists all found packages with their descriptions. Does **not** compile or install. |
 | `vouru install <term>`     | Look for `<term>`; if multiple matches, ask which one to install. Then: <br> • Check if already installed → offer to reinstall <br> • Check if available in official repos → offer to install directly (fast) <br> • Otherwise, show the `template` file, ask for confirmation, compile with `xbps-src pkg`, and install. |
 | `vouru update`             | Update the `void-packages` repo (`git pull`), run `bootstrap-update`, run `update-sys`, and finally update the whole system with `xbps-install -Su`. |
-| `vouru clean`              | Remove the entire `void-packages` repository (including all compiled packages and source) to free up disk space. Asks for confirmation before deleting. |
+| `vouru remove <pkg>`      | Remove an installed package. Asks for confirmation before running `xbps-remove -y`. |
+| `vouru clean`             | Remove the entire `void-packages` repository (including all compiled packages and source) and purge the package cache with `xbps-remove -O` to free up disk space. Asks for confirmation before deleting. |
 | `vouru set-repo <path>`    | Change the location of the `void-packages` repository. If no path is given, it prompts interactively. The setting is saved in `~/.voururc`. |
 | `vouru -h` or `--help`     | Show this help message. |
 | `vouru` (no arguments)     | Same as `--help`. |
@@ -93,6 +94,7 @@ Now you can run it as `vouru <command>`.
 **Aliases:**  
 - `search` ↔ `-s`  
 - `install` ↔ `-i`  
+- `remove` ↔ `-r`  
 - `clean` ↔ `-c`  
 - `add` ↔ `-a`
 
@@ -112,6 +114,12 @@ vouru install vlc
 
 # Install using alias
 vouru -i mpv
+
+# Remove an installed package
+vouru remove cmuspp-void
+
+# Remove using alias
+vouru -r mpv
 
 # Full system update (repo + xbps-src + system)
 vouru update
@@ -148,7 +156,9 @@ curl -sSL https://github.com/javiercplus/vouru/raw/refs/heads/main/vouru | bash 
    - If you choose compilation, the `template` file is shown with `less` (or `cat`), and you confirm before proceeding.
    - Compilation runs with `./xbps-src pkg` (output is shown live).
    - The resulting package is installed with `xbps-install --repository hostdir/binpkgs`.
-6. **Logging** – all muted operations (clone, bootstrap, git pull, update-sys) are appended to `~/.vouru.log` with timestamps.
+7. **Remove** (`vouru remove <pkg>`) – checks that the package is installed, asks for confirmation, and runs `xbps-remove -y`.
+8. **Clean** (`vouru clean`) – removes the `void-packages` repository and purges cached packages with `xbps-remove -O`.
+9. **Logging** – all muted operations (clone, bootstrap, git pull, update-sys) are appended to `~/.vouru.log` with timestamps.
 
 ---
 

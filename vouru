@@ -140,7 +140,8 @@ Commands:
   add <git-url>          Clone a git repository and copy template folders into srcpkgs
   search | -s <term>      Search for packages in srcpkgs matching <term>
   install | -i <term>     Search for, compile, and install a package (shows template first)
-  clean | -c              Remove the entire void-packages repository (free up space)
+  remove | -r <pkg>       Remove an installed package (xbps-remove)
+  clean | -c              Remove the void-packages repository and purge cached packages
   set-repo [path]         Set the location of the void-packages repository (if no path, prompt)
   -h | --help             Show this help message
 
@@ -153,6 +154,8 @@ Examples:
   vouru -s libva
   vouru install vlc
   vouru -i mpv
+  vouru remove cmuspp-void
+  vouru -r mpv
   vouru update
   vouru clean
   vouru set-repo /path/to/my/void-packages
@@ -293,6 +296,27 @@ install_package() {
     echo -e "\n${V_MAIN}:: $PKG_NAME installed successfully.${V_RST}"
 }
 
+# Function to remove an installed package
+remove_package() {
+    local pkg_name="$1"
+
+    if ! is_pkg_installed "$pkg_name"; then
+        echo -e "${V_ERR}Error: Package $pkg_name is not installed.${V_RST}" >&2
+        exit 1
+    fi
+
+    echo -e "${V_MAIN}About to remove ${V_PKG}$pkg_name${V_RST}"
+    # Read from /dev/tty
+    read -p "Do you want to continue with the removal of $pkg_name? (y/N): " confirm < /dev/tty
+    if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
+        echo -e "${V_ERR}Operation cancelled by user.${V_RST}"
+        exit 0
+    fi
+
+    run_priv xbps-remove -y "$pkg_name"
+    echo -e "${V_MAIN}\n:: $pkg_name removed successfully.${V_RST}"
+}
+
 # Function for a full update (repository + xbps-src + system)
 update_all() {
     ensure_repo
@@ -309,7 +333,7 @@ update_all() {
     echo -e "${V_MAIN}Update complete.${V_RST}"
 }
 
-# Function to clean the entire repository
+# Function to clean the entire repository and purge cached packages
 clean_repo() {
     if [ ! -d "$VURU_DIR" ]; then
         echo -e "${V_MAIN}No repository found at $VURU_DIR. Nothing to clean.${V_RST}"
@@ -321,6 +345,9 @@ clean_repo() {
     if [[ "$confirm" =~ ^[Yy]$ ]]; then
         rm -rf "$VURU_DIR"
         echo -e "${V_MAIN}Repository removed successfully.${V_RST}"
+        echo -e "${V_MAIN}Cleaning cached packages with xbps-remove -O...${V_RST}"
+        run_priv xbps-remove -O
+        echo -e "${V_MAIN}Package cache cleaned.${V_RST}"
     else
         echo -e "${V_MAIN}Clean cancelled.${V_RST}"
     fi
@@ -438,6 +465,14 @@ case "$1" in
             exit 1
         fi
         install_package "$2"
+        ;;
+    remove|-r)
+        if [ -z "$2" ]; then
+            echo -e "${V_ERR}Error: Missing package name.${V_RST}"
+            show_help
+            exit 1
+        fi
+        remove_package "$2"
         ;;
     clean|-c)
         clean_repo
