@@ -442,15 +442,58 @@ add_template() {
     fi
     echo -e "${V_MAIN}Found ${#TEMPLATE_FILES[@]} template(s) in repository.${V_RST}"
 
-    if [ ${#TEMPLATE_FILES[@]} -eq 0 ]; then
-        echo -e "${V_ERR}Error: No 'template' file found in the repository.${V_RST}" >&2
-        rm -rf "$tmp_dir"
-        exit 1
-    fi
-
+    # Classify templates by layout:
+    # - top_level: <pkg>/template directly under the repo root -> mass copy
+    # - nested:    any deeper layout (srcpkgs/<pkg>, unmaintained/<pkg>, ...) -> single copy
+    # - root:      'template' directly at the repo root -> copy via pkgname field
     local added=0
+    local top_level=()
+    local nested=()
+    local root_files=()
+
     for template_file in "${TEMPLATE_FILES[@]}"; do
         local template_dir
+        template_dir="$(dirname "$template_file")"
+        if [ "$template_dir" = "$tmp_dir" ]; then
+            root_files+=("$template_file")
+        else
+            local rel
+            rel="${template_dir#"$tmp_dir"/}"
+            if [[ "$rel" == */* ]]; then
+                nested+=("$template_file")
+            else
+                top_level+=("$template_file")
+            fi
+        fi
+    done
+
+    # Mass copy: all templates at <pkg>/template in the repo root
+    if [ ${#top_level[@]} -gt 0 ]; then
+        local to_copy=()
+        for template_file in "${top_level[@]}"; do
+            local template_dir pkg_name
+            template_dir="$(dirname "$template_file")"
+            pkg_name="$(basename "$template_dir")"
+            if [ -d "srcpkgs/$pkg_name" ]; then
+                echo -e "${V_ERR}Warning: Package '$pkg_name' already exists in srcpkgs. Skipping.${V_RST}"
+            else
+                to_copy+=("$template_dir")
+            fi
+        done
+        if [ ${#to_copy[@]} -gt 0 ]; then
+            cp -rf "${to_copy[@]}" "srcpkgs/"
+            for template_dir in "${to_copy[@]}"; do
+                local pkg_name
+                pkg_name="$(basename "$template_dir")"
+                echo -e "${V_MAIN}Added package ${V_PKG}$pkg_name${V_MAIN} from $repo_url${V_RST}"
+                added=$((added+1))
+            done
+        fi
+    fi
+
+    # Single copies: root templates and nested layouts
+    for template_file in "${root_files[@]}" "${nested[@]}"; do
+        local template_dir pkg_name
         template_dir="$(dirname "$template_file")"
 
         # Skip .git directories
@@ -461,7 +504,6 @@ add_template() {
         # Determine package name:
         # 1. If template is at root of tmp_dir, extract pkgname from the template file
         # 2. Otherwise, use the basename of the directory containing the template
-        local pkg_name
         if [ "$template_dir" = "$tmp_dir" ]; then
             local raw_name
             raw_name="$(grep -m1 '^pkgname=' "$template_file" | cut -d= -f2-)"
@@ -482,9 +524,14 @@ add_template() {
         fi
         # Clean up any .git metadata from the template directory before copying
         rm -rf "$template_dir/.git" 2>/dev/null || true
-        cp -r "$template_dir" "srcpkgs/$pkg_name"
+        if [ "$template_dir" = "$tmp_dir" ]; then
+            mkdir -p "srcpkgs/$pkg_name"
+            cp -rf "$tmp_dir"/. "srcpkgs/$pkg_name/"
+        else
+            cp -r "$template_dir" "srcpkgs/$pkg_name"
+        fi
         echo -e "${V_MAIN}Added package ${V_PKG}$pkg_name${V_MAIN} from $repo_url${V_RST}"
-        ((added++))
+        added=$((added+1))
     done
 
     rm -rf "$tmp_dir"
@@ -493,6 +540,7 @@ add_template() {
         echo -e "${V_ERR}No new packages were added (all already exist or no templates found).${V_RST}" >&2
         exit 1
     fi
+    echo -e "${V_MAIN}Added ${V_PKG}$added${V_MAIN} new package(s).${V_RST}"
 }
 
 # --- Argument Processing ---
