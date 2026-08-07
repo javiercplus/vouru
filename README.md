@@ -42,7 +42,7 @@ curl -sSL https://github.com/javiercplus/vouru/raw/refs/heads/main/vouru | bash 
 
 **Aliases:** `-s` (search), `-i` (install), `-r` (remove), `-c` (clean), `-a` (add)
 
-When installing a package, vouru shows its template before building it. A warning is shown before the template letting you know that pressing `q` closes the template view and returns to the prompt.
+When installing a package, vouru pauses and asks you to press any key to open the package's template before building it. While viewing the template, pressing `q` closes the view and returns to the prompt.
 
 ## Examples
 
