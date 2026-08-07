@@ -80,7 +80,10 @@ cat > "$TMP_LAUNCHER" <<'EOF'
 REPO_URL="https://github.com/javiercplus/vouru/raw/refs/heads/main/vouru"
 
 if command -v curl &>/dev/null; then
-    curl -sSL "$REPO_URL" | bash -s "$@" 
+    # The '--' stops bash from eating vouru flags that collide with its own
+    # options (e.g. -i, -s, -c), which would make bash echo the script and
+    # misroute the arguments.
+    curl -sSL "$REPO_URL" | bash -s -- "$@"
 else
     echo "Error: curl is required to run vouru." >&2
     exit 1

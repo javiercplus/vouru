@@ -23,10 +23,10 @@ curl -sSL -o vouru https://github.com/javiercplus/vouru/raw/refs/heads/main/vour
 chmod +x vouru && sudo mv vouru /usr/local/bin/
 
 # Sin instalar (desde la web)
-curl -sSL https://github.com/javiercplus/vouru/raw/refs/heads/main/vouru | bash -s search firefox
+curl -sSL https://github.com/javiercplus/vouru/raw/refs/heads/main/vouru | bash -s -- search firefox
 ```
 
-> El `-s` tras `bash` es obligatorio para pasar argumentos.
+> El `-s --` tras `bash` es obligatorio: el `-s` lee el script desde stdin y el `--` impide que bash interprete las opciones de vouru (`-i`, `-s`, `-c`...) como si fueran suyas.
 
 ## Comandos
 

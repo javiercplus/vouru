@@ -1,5 +1,11 @@
 #!/bin/bash
 # VOURU - Void User Repository helper for xbps-src
+#
+# The whole body is guarded so that pasting or sourcing this file into an
+# interactive shell does NOT execute anything or produce output. It runs when
+# invoked as a script (./vouru, bash vouru) or when piped in
+# (curl ... | bash -s, where stdin is not a tty).
+if [ -n "${BASH_SOURCE[0]}" ] || [ ! -t 0 ]; then
 set -euo pipefail
 # Default location
 DEFAULT_VURU_DIR="$HOME/.local/share/pkgs/void-packages"
@@ -558,7 +564,7 @@ case "$1" in
         update_all
         ;;
     search|-s)
-        if [ -z "$2" ]; then
+        if [ -z "${2:-}" ]; then
             echo -e "${V_ERR}Error: Missing search term.${V_RST}"
             show_help
             exit 1
@@ -566,7 +572,7 @@ case "$1" in
         search_packages "$2"
         ;;
     install|-i)
-        if [ -z "$2" ]; then
+        if [ -z "${2:-}" ]; then
             echo -e "${V_ERR}Error: Missing package name.${V_RST}"
             show_help
             exit 1
@@ -574,7 +580,7 @@ case "$1" in
         install_package "$2"
         ;;
     remove|-r)
-        if [ -z "$2" ]; then
+        if [ -z "${2:-}" ]; then
             echo -e "${V_ERR}Error: Missing package name.${V_RST}"
             show_help
             exit 1
@@ -588,7 +594,7 @@ case "$1" in
         set_repo_location "${2:-}"
         ;;
     add)
-        if [ -z "$2" ]; then
+        if [ -z "${2:-}" ]; then
             echo -e "${V_ERR}Error: Missing git repository URL.${V_RST}"
             show_help
             exit 1
@@ -600,3 +606,4 @@ case "$1" in
         install_package "$1"
         ;;
 esac
+fi
