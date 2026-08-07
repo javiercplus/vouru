@@ -9,7 +9,7 @@ DEFAULT_INSTALL_DIR="$HOME/.local/bin"
 INSTALL_DIR="${INSTALL_DIR:-$DEFAULT_INSTALL_DIR}"
 LAUNCHER_NAME="vouru"
 LAUNCHER_PATH="$INSTALL_DIR/$LAUNCHER_NAME"
-REPO_URL="https://github.com/javiercplus/vouru/raw/refs/heads/main/vouru"
+REPO_URL="https://raw.githubusercontent.com/javiercplus/vouru/refs/heads/main/vouru"
 TMP_LAUNCHER="$(mktemp -p /tmp vouru-launcher.XXXXXX)"
 
 # Cleanup trap
@@ -77,7 +77,7 @@ cat > "$TMP_LAUNCHER" <<'EOF'
 # VOURU launcher - executes the latest version from GitHub
 # This script is auto-generated; do not edit directly.
 
-REPO_URL="https://github.com/javiercplus/vouru/raw/refs/heads/main/vouru"
+REPO_URL="https://raw.githubusercontent.com/javiercplus/vouru/refs/heads/main/vouru"
 
 if command -v curl &>/dev/null; then
     # The '--' stops bash from eating vouru flags that collide with its own
