@@ -179,6 +179,7 @@ review_template() {
     fi
 
     echo -e "${V_MAIN}Showing template for ${V_PKG}$pkg_name${V_MAIN}:${V_RST}"
+    echo -e "${V_MAIN}Press ${V_PKG}'q'${V_MAIN} to close the template view.${V_RST}"
     echo "------------------------------------------------------------"
 
     if command -v less &>/dev/null; then
