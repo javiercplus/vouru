@@ -481,11 +481,7 @@ add_template() {
             local template_dir pkg_name
             template_dir="$(dirname "$template_file")"
             pkg_name="$(basename "$template_dir")"
-            if [ -d "srcpkgs/$pkg_name" ]; then
-                echo -e "${V_ERR}Warning: Package '$pkg_name' already exists in srcpkgs. Skipping.${V_RST}"
-            else
-                to_copy+=("$template_dir")
-            fi
+            to_copy+=("$template_dir")
         done
         if [ ${#to_copy[@]} -gt 0 ]; then
             cp -rf "${to_copy[@]}" "srcpkgs/"
@@ -525,18 +521,11 @@ add_template() {
             pkg_name="$(basename "$template_dir")"
         fi
 
-        if [ -d "srcpkgs/$pkg_name" ]; then
-            echo -e "${V_ERR}Warning: Package '$pkg_name' already exists in srcpkgs. Skipping.${V_RST}"
-            continue
-        fi
-        # Clean up any .git metadata from the template directory before copying
+        # Force overwrite: copy (and merge) the template contents into srcpkgs,
+        # replacing any existing files even if the package already exists.
         rm -rf "$template_dir/.git" 2>/dev/null || true
-        if [ "$template_dir" = "$tmp_dir" ]; then
-            mkdir -p "srcpkgs/$pkg_name"
-            cp -rf "$tmp_dir"/. "srcpkgs/$pkg_name/"
-        else
-            cp -r "$template_dir" "srcpkgs/$pkg_name"
-        fi
+        mkdir -p "srcpkgs/$pkg_name"
+        cp -rf "$template_dir"/. "srcpkgs/$pkg_name/"
         echo -e "${V_MAIN}Added package ${V_PKG}$pkg_name${V_MAIN} from $repo_url${V_RST}"
         added=$((added+1))
     done
@@ -544,10 +533,10 @@ add_template() {
     rm -rf "$tmp_dir"
 
     if [ "$added" -eq 0 ]; then
-        echo -e "${V_ERR}No new packages were added (all already exist or no templates found).${V_RST}" >&2
+        echo -e "${V_ERR}No packages were added (no templates found).${V_RST}" >&2
         exit 1
     fi
-    echo -e "${V_MAIN}Added ${V_PKG}$added${V_MAIN} new package(s).${V_RST}"
+    echo -e "${V_MAIN}Added ${V_PKG}$added${V_MAIN} package(s) (existing ones were overwritten).${V_RST}"
 }
 
 # --- Argument Processing ---
