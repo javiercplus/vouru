@@ -1,6 +1,7 @@
-# Vouru – Void User Repository Helper
+# Vouru / Void User Repository Helper
 
-Vouru is a Bash script to build and install packages from `void-packages` and the community **VUR** overlay.
+Vouru is a Bash script to build and install packages from `void-packages` and from **custom Git repositories** (like the community VUR overlay) that contain xbps‑src templates.  
+With the `add` command, you can clone any repository – be it your own, a fork, or a third‑party collection – and its templates will be automatically copied into the local `srcpkgs` tree for building.
 
 - Clones `void-packages`, runs `binary-bootstrap`
 - Searches, compiles and installs packages
@@ -32,7 +33,7 @@ curl -sSL https://github.com/javiercplus/vouru/raw/refs/heads/main/vouru | bash 
 
 | Command | Description |
 |---------|-------------|
-| `vouru add <git-url>` | Clones a repo and copies its templates to `srcpkgs` (supports subdirectories and a template at the root; skips existing ones) |
+| `vouru add <git-url>` | Clones a repository and copies its templates into `srcpkgs` (supports subdirectories and a template at the root; existing templates are skipped). This lets you use **any** Git repo that provides valid xbps‑src templates. |
 | `vouru search <term>` | Searches for packages in `srcpkgs` matching `<term>` |
 | `vouru install <term>` | Installs a package: choose between `[repo]` (xbps-install, binary) or `[source]` (build with xbps-src) |
 | `vouru remove <pkg>` | Removes a package with `xbps-remove -y -o` (includes orphans) |
