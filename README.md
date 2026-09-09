@@ -6,6 +6,7 @@ With the `add` command, you can clone any repository – be it your own, a fork,
 - Clones `void-packages`, runs `binary-bootstrap`
 - Searches, compiles and installs packages
 - Detects whether a package is in the official repos or only available as a template
+- Lists template sources and counts the templates available in the local `srcpkgs` tree
 - Heavy operations run with a spinner and log to `~/.vouru.log`
 
 ## Requirements
@@ -35,6 +36,7 @@ curl -sSL https://github.com/javiercplus/vouru/raw/refs/heads/main/vouru | bash 
 |---------|-------------|
 | `vouru add <git-url>` | Clones a repository and copies its templates into `srcpkgs` (supports subdirectories and a template at the root; existing templates are skipped). This lets you use **any** Git repo that provides valid xbps‑src templates. |
 | `vouru search <term>` | Searches for packages in `srcpkgs` matching `<term>` |
+| `vouru source` | Lists the repositories added with `vouru add`, with their local template counts and a total |
 | `vouru install <term>` | Installs a package: choose between `[repo]` (xbps-install, binary) or `[source]` (build with xbps-src) |
 | `vouru remove <pkg>` | Removes a package with `xbps-remove -y -o` (includes orphans) |
 | `vouru update` | Updates the repo, `xbps-src` and the system |
@@ -50,6 +52,7 @@ When installing a package, vouru pauses and asks you to press any key to open th
 ```bash
 vouru add https://codeberg.org/Neko-Void/zig-nk.git
 vouru search firefox
+vouru source
 vouru install vlc
 vouru remove cmuspp-void
 vouru update
@@ -60,6 +63,7 @@ vouru clean
 
 - **Repo:** `~/.voururc` or `vouru set-repo <path>`
 - **Log:** `~/.vouru.log` (check if cloning/bootstrap fails)
+- **Template sources:** `~/.config/vouru/template-sources.tsv` (written when `vouru add` imports a template)
 
 ## Troubleshooting
 
