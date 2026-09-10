@@ -10,6 +10,7 @@ set -euo pipefail
 # Default location
 DEFAULT_VURU_DIR="$HOME/.local/share/pkgs/void-packages"
 CONFIG_FILE="$HOME/.voururc"
+SOURCE_INDEX_FILE="$HOME/.config/vouru/template-sources.tsv"
 
 # Global flag to know if void-packages was cloned in this run
 REPO_WAS_CLONED=false
@@ -145,6 +146,7 @@ Commands:
   update                  Update the void-packages repo, xbps-src, and the system
   add <git-url>          Clone a git repository and copy template folders into srcpkgs
   search | -s <term>      Search for packages in srcpkgs matching <term>
+  source                  List repositories added with 'vouru add' and count templates
   install | -i <term>     Search for, compile, and install a package (shows template first)
   remove | -r <pkg>       Remove an installed package (xbps-remove)
   clean | -c              Remove the void-packages repository and purge cached packages
@@ -166,6 +168,59 @@ Examples:
   vouru clean
   vouru set-repo /path/to/my/void-packages
 EOF
+}
+
+record_template_source() {
+    local pkg_name="$1"
+    local source_url="$2"
+    local index_dir index_tmp
+
+    index_dir="$(dirname "$SOURCE_INDEX_FILE")"
+    mkdir -p "$index_dir"
+    index_tmp="$(mktemp)"
+
+    if [ -f "$SOURCE_INDEX_FILE" ]; then
+        awk -F '\t' -v repo="$VURU_DIR" -v pkg="$pkg_name" \
+            '$1 != repo || $2 != pkg' "$SOURCE_INDEX_FILE" > "$index_tmp"
+    fi
+    printf '%s\t%s\t%s\n' "$VURU_DIR" "$pkg_name" "$source_url" >> "$index_tmp"
+    mv "$index_tmp" "$SOURCE_INDEX_FILE"
+}
+
+list_template_sources() {
+    local total_templates official_templates imported_templates
+    local official_url
+    local indexed_repo indexed_pkg indexed_url
+    local source
+    local source_order=()
+    declare -A source_counts=()
+
+    ensure_repo
+    total_templates="$(find "$VURU_DIR/srcpkgs" -mindepth 2 -maxdepth 2 -type f -name template -printf '.' | wc -c | tr -d ' ')"
+    imported_templates=0
+
+    if [ -f "$SOURCE_INDEX_FILE" ]; then
+        while IFS=$'\t' read -r indexed_repo indexed_pkg indexed_url; do
+            [ "$indexed_repo" = "$VURU_DIR" ] || continue
+            [ -f "$VURU_DIR/srcpkgs/$indexed_pkg/template" ] || continue
+            if [ -z "${source_counts[$indexed_url]+present}" ]; then
+                source_order+=("$indexed_url")
+                source_counts["$indexed_url"]=0
+            fi
+            source_counts["$indexed_url"]=$((source_counts["$indexed_url"] + 1))
+            imported_templates=$((imported_templates + 1))
+        done < "$SOURCE_INDEX_FILE"
+    fi
+
+    official_templates=$((total_templates - imported_templates))
+    official_url="$(git -C "$VURU_DIR" remote get-url origin 2>/dev/null || true)"
+
+    echo -e "${V_MAIN}Template sources:${V_RST}"
+    echo -e "  ${V_PKG}${official_url:-$VURU_DIR}${V_RST} — ${official_templates} template(s) from the base repository"
+    for source in "${source_order[@]}"; do
+        echo -e "  ${V_PKG}${source}${V_RST} — ${source_counts[$source]} imported template(s)"
+    done
+    echo -e "${V_MAIN}\nTotal locally available: ${V_PKG}${total_templates}${V_RST} template(s)"
 }
 
 # Function to show the template and ask for confirmation
@@ -435,9 +490,12 @@ add_template() {
         exit 1
     fi
 
+    local source_url
+    source_url="$(git -C "$tmp_dir" remote get-url origin 2>/dev/null || printf '%s' "$repo_url")"
+
     echo -e "${V_MAIN}Searching for templates...${V_RST}"
     TEMPLATE_FILES=()
-    # Buscar todos los templates en el repositorio (sin límite de profundidad)
+    # Search all templates in the repository (no depth limit)
     while IFS= read -r template_file; do
         TEMPLATE_FILES+=("$template_file")
     done < <(find "$tmp_dir" -type f -name "template" -not -path "*/.git/*" | sort -u)
@@ -489,6 +547,7 @@ add_template() {
                 local pkg_name
                 pkg_name="$(basename "$template_dir")"
                 echo -e "${V_MAIN}Added package ${V_PKG}$pkg_name${V_MAIN} from $repo_url${V_RST}"
+                record_template_source "$pkg_name" "$source_url"
                 added=$((added+1))
             done
         fi
@@ -527,6 +586,7 @@ add_template() {
         mkdir -p "srcpkgs/$pkg_name"
         cp -rf "$template_dir"/. "srcpkgs/$pkg_name/"
         echo -e "${V_MAIN}Added package ${V_PKG}$pkg_name${V_MAIN} from $repo_url${V_RST}"
+        record_template_source "$pkg_name" "$source_url"
         added=$((added+1))
     done
 
@@ -560,6 +620,9 @@ case "$1" in
             exit 1
         fi
         search_packages "$2"
+        ;;
+    source)
+        list_template_sources
         ;;
     install|-i)
         if [ -z "${2:-}" ]; then
