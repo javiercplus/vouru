@@ -85,8 +85,8 @@ spinner() {
         printf "\r[%c] %s" "${spin:$i:1}" "$msg"
         sleep 0.15
     done
-    wait $pid
-    local exit_code=$?
+    local exit_code=0
+    wait $pid || exit_code=$?
     if [ $exit_code -eq 0 ]; then
         printf "\r[✓] %s\n" "$msg"
     else
@@ -102,12 +102,22 @@ run_with_spinner() {
     echo "--- Running: $* ---" >> "$VURU_LOG"
     ( "$@" >> "$VURU_LOG" 2>&1 ) &
     local pid=$!
-    spinner $pid "$msg"
-    local ret=$?
+    local ret=0
+    spinner $pid "$msg" || ret=$?
     if [ $ret -ne 0 ]; then
         echo -e "${V_ERR}Command failed. Check $VURU_LOG for details.${V_RST}" >&2
     fi
     return $ret
+}
+
+update_repo() {
+    git pull --rebase --autostash origin master
+    if [ -n "$(git diff --name-only --diff-filter=U)" ] && [ "$(git stash list -1 --format='%gs')" = "autostash" ]; then
+        git checkout --theirs -- .
+        git add -u
+        git restore --staged .
+        git stash drop
+    fi
 }
 
 # Function to ensure the void-packages repo exists
@@ -131,7 +141,7 @@ ensure_repo() {
     else
         echo -e "${V_MAIN}Using existing repository at $VURU_DIR.${V_RST}"
         cd "$VURU_DIR" || exit 1
-        run_with_spinner "Updating void-packages repository (git pull)" git pull origin master
+        run_with_spinner "Updating void-packages repository (git pull)" update_repo
         cd - >/dev/null
     fi
 }
