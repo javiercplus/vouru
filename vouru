@@ -215,12 +215,12 @@ list_template_sources() {
     official_templates=$((total_templates - imported_templates))
     official_url="$(git -C "$VURU_DIR" remote get-url origin 2>/dev/null || true)"
 
-    echo -e "${V_MAIN}Fuentes de templates:${V_RST}"
-    echo -e "  ${V_PKG}${official_url:-$VURU_DIR}${V_RST} — ${official_templates} template(s) del repositorio base"
+    echo -e "${V_MAIN}Template sources:${V_RST}"
+    echo -e "  ${V_PKG}${official_url:-$VURU_DIR}${V_RST} — ${official_templates} template(s) from the base repository"
     for source in "${source_order[@]}"; do
-        echo -e "  ${V_PKG}${source}${V_RST} — ${source_counts[$source]} template(s) importado(s)"
+        echo -e "  ${V_PKG}${source}${V_RST} — ${source_counts[$source]} imported template(s)"
     done
-    echo -e "${V_MAIN}\nTotal disponible localmente: ${V_PKG}${total_templates}${V_RST} template(s)"
+    echo -e "${V_MAIN}\nTotal locally available: ${V_PKG}${total_templates}${V_RST} template(s)"
 }
 
 # Function to show the template and ask for confirmation
@@ -495,7 +495,7 @@ add_template() {
 
     echo -e "${V_MAIN}Searching for templates...${V_RST}"
     TEMPLATE_FILES=()
-    # Buscar todos los templates en el repositorio (sin límite de profundidad)
+    # Search all templates in the repository (no depth limit)
     while IFS= read -r template_file; do
         TEMPLATE_FILES+=("$template_file")
     done < <(find "$tmp_dir" -type f -name "template" -not -path "*/.git/*" | sort -u)
