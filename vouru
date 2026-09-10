@@ -110,16 +110,6 @@ run_with_spinner() {
     return $ret
 }
 
-update_repo() {
-    git pull --rebase --autostash origin master
-    if [ -n "$(git diff --name-only --diff-filter=U)" ] && [ "$(git stash list -1 --format='%gs')" = "autostash" ]; then
-        git checkout --theirs -- .
-        git add -u
-        git restore --staged .
-        git stash drop
-    fi
-}
-
 # Function to ensure the void-packages repo exists
 ensure_repo() {
     REPO_WAS_CLONED=false
@@ -141,7 +131,11 @@ ensure_repo() {
     else
         echo -e "${V_MAIN}Using existing repository at $VURU_DIR.${V_RST}"
         cd "$VURU_DIR" || exit 1
-        run_with_spinner "Updating void-packages repository (git pull)" update_repo
+        if git diff --quiet && git diff --cached --quiet; then
+            run_with_spinner "Updating void-packages repository (git pull)" git pull origin master
+        else
+            echo -e "${V_ERR}Local changes detected. Skipping repository update to preserve them.${V_RST}"
+        fi
         cd - >/dev/null
     fi
 }
