@@ -86,8 +86,8 @@ spinner() {
         printf "\r[%c] %s" "${spin:$i:1}" "$msg"
         sleep 0.15
     done
-    wait $pid
-    local exit_code=$?
+    local exit_code=0
+    wait $pid || exit_code=$?
     if [ $exit_code -eq 0 ]; then
         printf "\r[✓] %s\n" "$msg"
     else
@@ -103,8 +103,8 @@ run_with_spinner() {
     echo "--- Running: $* ---" >> "$VURU_LOG"
     ( "$@" >> "$VURU_LOG" 2>&1 ) &
     local pid=$!
-    spinner $pid "$msg"
-    local ret=$?
+    local ret=0
+    spinner $pid "$msg" || ret=$?
     if [ $ret -ne 0 ]; then
         echo -e "${V_ERR}Command failed. Check $VURU_LOG for details.${V_RST}" >&2
     fi
@@ -132,7 +132,11 @@ ensure_repo() {
     else
         echo -e "${V_MAIN}Using existing repository at $VURU_DIR.${V_RST}"
         cd "$VURU_DIR" || exit 1
-        run_with_spinner "Updating void-packages repository (git pull)" git pull origin master
+        if git diff --quiet && git diff --cached --quiet; then
+            run_with_spinner "Updating void-packages repository (git pull)" git pull origin master
+        else
+            echo -e "${V_ERR}Local changes detected. Skipping repository update to preserve them.${V_RST}"
+        fi
         cd - >/dev/null
     fi
 }
