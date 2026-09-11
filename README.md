@@ -42,6 +42,7 @@ curl -sSL https://github.com/javiercplus/vouru/raw/refs/heads/main/vouru | bash 
 | `vouru update` | Updates the repo, `xbps-src` and the system |
 | `vouru clean` | Deletes `void-packages` and cleans the cache with `xbps-remove -O` |
 | `vouru set-repo [path]` | Changes the repo location (saved in `~/.voururc`) |
+| `vouru install --restricted` | Install restricted packages (like spotify, discord, etc) |
 
 **Aliases:** `-s` (search), `-i` (install), `-r` (remove), `-c` (clean), `-a` (add)
 
@@ -54,6 +55,7 @@ vouru add https://codeberg.org/Neko-Void/zig-nk.git
 vouru search firefox
 vouru source
 vouru install vlc
+vouru install --restricted discord
 vouru remove cmuspp-void
 vouru update
 vouru clean
