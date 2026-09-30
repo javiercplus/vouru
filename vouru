@@ -75,6 +75,19 @@ run_priv() {
     "$PRIV_CMD" "$@"
 }
 
+# Configure xbps-src to use the correct privilege escalation command
+configure_xbps_src() {
+    local conf_file="$VURU_DIR/etc/conf"
+    local su_cmd="${PRIV_CMD} /bin/sh -c"
+
+    mkdir -p "$(dirname "$conf_file")"
+    if grep -q "^XBPS_SUCMD=" "$conf_file" 2>/dev/null; then
+        sed -i "s|^XBPS_SUCMD=.*|XBPS_SUCMD=\"${su_cmd}\"|" "$conf_file"
+    else
+        echo "XBPS_SUCMD=\"${su_cmd}\"" >> "$conf_file"
+    fi
+}
+
 # Spinner function: shows a rotating indicator while a background job runs
 spinner() {
     local pid=$1
@@ -137,6 +150,7 @@ ensure_repo() {
         fi
         cd - >/dev/null
     fi
+    configure_xbps_src
 }
 
 # Function to show help
