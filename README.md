@@ -1,4 +1,5 @@
 # Vouru / Void User Repository Helper
+<img width="793" height="381" alt="image" src="https://github.com/user-attachments/assets/00721aa0-a064-41dc-a743-79547ea89286" />
 
 Vouru is a Bash script to build and install packages from `void-packages` and from **custom Git repositories** (like the community VUR overlay) that contain xbps‑src templates.  
 With the `add` command, you can clone any repository – be it your own, a fork, or a third‑party collection – and its templates will be automatically copied into the local `srcpkgs` tree for building.
