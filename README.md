@@ -34,7 +34,7 @@ curl -sSL https://github.com/javiercplus/vouru/raw/refs/heads/main/vouru | bash 
 
 | Command | Description |
 |---------|-------------|
-| `vouru add <git-url>` | Clones a repository and copies its templates into `srcpkgs` (supports subdirectories and a template at the root; existing templates are skipped). This lets you use **any** Git repo that provides valid xbps‑src templates. |
+| `vouru add [-b <branch>] <url>` | Clones a repository and copies its templates into `srcpkgs` (supports subdirectories and a template at the root; existing templates are skipped). This lets you use **any** Git repo that provides valid xbps‑src templates. |
 | `vouru search <term>` | Searches for packages in `srcpkgs` matching `<term>` |
 | `vouru source` | Lists the repositories added with `vouru add`, with their local template counts and a total |
 | `vouru install <term>` | Installs a package: choose between `[repo]` (xbps-install, binary) or `[source]` (build with xbps-src) |
