@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # VOURU - Void User Repository helper for xbps-src
 #
 # The whole body is guarded so that pasting or sourcing this file into an
@@ -8,17 +8,11 @@
 if [ -n "${BASH_SOURCE[0]}" ] || [ ! -t 0 ]; then
 set -euo pipefail
 
-# Default location
 DEFAULT_VURU_DIR="$HOME/.local/share/pkgs/void-packages"
 CONFIG_FILE="$HOME/.voururc"
 SOURCE_INDEX_FILE="$HOME/.config/vouru/template-sources.tsv"
-
-# Global flag to know if void-packages was cloned in this run
-REPO_WAS_CLONED=false
-# Global flag to know if the repository path is explicitly configured by the user
 IS_CONFIGURED=false
 
-# Load configuration or set default
 load_config() {
     if [ -f "$CONFIG_FILE" ]; then
         source "$CONFIG_FILE"
@@ -33,12 +27,10 @@ load_config() {
     export VURU_DIR
 }
 
-# Save configuration
 save_config() {
     echo "VURU_DIR=\"$VURU_DIR\"" > "$CONFIG_FILE"
 }
 
-# Load config at startup
 load_config
 
 VURU_LOG="$HOME/.vouru.log"
@@ -47,10 +39,8 @@ V_PKG="\e[1;34m"  # Blue
 V_ERR="\e[1;31m"  # Red
 V_RST="\e[0m"     # Default
 
-# Ensure log directory exists and start fresh with a timestamp
 echo "=== VOURU Log started at $(date) ===" >> "$VURU_LOG"
 
-# Check for required dependencies
 VURU_REQUIRED=("git" "xtools")
 for check in "${VURU_REQUIRED[@]}"; do
     if ! xbps-query -S "$check" &>/dev/null; then
@@ -59,7 +49,6 @@ for check in "${VURU_REQUIRED[@]}"; do
     fi
 done
 
-# Detect privilege command (doas or sudo)
 PRIV_CMD=""
 if command -v doas &>/dev/null; then
     PRIV_CMD="doas"
@@ -70,16 +59,13 @@ else
     exit 1
 fi
 
-# Function to run commands with privileges
 run_priv() {
     "$PRIV_CMD" "$@"
 }
 
-# Configure xbps-src to use the correct privilege escalation command
 configure_xbps_src() {
     local conf_file="$VURU_DIR/etc/conf"
     local su_cmd="${PRIV_CMD} /bin/sh -c"
-
     mkdir -p "$(dirname "$conf_file")"
     if grep -q "^XBPS_SUCMD=" "$conf_file" 2>/dev/null; then
         sed -i "s|^XBPS_SUCMD=.*|XBPS_SUCMD=\"${su_cmd}\"|" "$conf_file"
@@ -88,7 +74,6 @@ configure_xbps_src() {
     fi
 }
 
-# Spinner function: shows a rotating indicator while a background job runs
 spinner() {
     local pid=$1
     local msg=$2
@@ -109,7 +94,6 @@ spinner() {
     return $exit_code
 }
 
-# Run a command with output redirected to the log and show a spinner
 run_with_spinner() {
     local msg="$1"
     shift
@@ -124,68 +108,132 @@ run_with_spinner() {
     return $ret
 }
 
-# Function to ensure the void-packages repo exists
+apply_templates_from_url() {
+    local repo_url="$1"
+    local target_dir="$2"
+    local branch="${3:-}"
+    local tmp_dir
+    tmp_dir="$(mktemp -d)"
+
+    local clone_args=("--depth" "1")
+    if [ -n "$branch" ]; then
+        clone_args+=("-b" "$branch")
+    fi
+
+    if ! git clone "${clone_args[@]}" "$repo_url" "$tmp_dir" >> "$VURU_LOG" 2>&1; then
+        rm -rf "$tmp_dir"
+        return 1
+    fi
+
+    while IFS= read -r template_file; do
+        local template_dir pkg_name
+        template_dir="$(dirname "$template_file")"
+        if [ "$template_dir" = "$tmp_dir" ]; then
+            pkg_name="$(grep -m1 '^pkgname=' "$template_file" | cut -d= -f2- | tr -d "\"'")"
+        else
+            pkg_name="$(basename "$template_dir")"
+        fi
+        if [ -z "$pkg_name" ]; then continue; fi
+        rm -rf "$target_dir/srcpkgs/$pkg_name/.git" 2>/dev/null || true
+        mkdir -p "$target_dir/srcpkgs/$pkg_name"
+        cp -rf "$template_dir"/. "$target_dir/srcpkgs/$pkg_name/"
+    done < <(find -L "$tmp_dir" -type f -name "template" -not -path "*/.git/*" | sort -u)
+
+    rm -rf "$tmp_dir"
+    return 0
+}
+
 ensure_repo() {
-    REPO_WAS_CLONED=false
     if [ ! -d "$VURU_DIR" ]; then
         if [ "$IS_CONFIGURED" = true ]; then
             echo -e "${V_ERR}Error: Configured void-packages repository at '$VURU_DIR' not found.${V_RST}" >&2
             echo -e "${V_ERR}Please verify the path or use '$(basename "$0") set-repo' to change it.${V_RST}" >&2
             exit 1
         else
-            echo -e "${V_MAIN}Repository not found. Cloning void-packages to default location ($VURU_DIR)...${V_RST}"
-            run_with_spinner "Cloning void-packages repository" git clone --depth 1 https://github.com/void-linux/void-packages.git "$VURU_DIR"
+            echo -e "${V_MAIN}Repository not found. Initial cloning to default location ($VURU_DIR)...${V_RST}"
+            run_with_spinner "Cloning void-packages repository (shallow)" git clone --depth 1 https://github.com/void-linux/void-packages.git "$VURU_DIR"
             cd "$VURU_DIR" || exit 1
             run_with_spinner "Running binary-bootstrap" ./xbps-src binary-bootstrap
             cd - >/dev/null
-            REPO_WAS_CLONED=true
         fi
     else
-        echo -e "${V_MAIN}Using existing repository at $VURU_DIR.${V_RST}"
         cd "$VURU_DIR" || exit 1
-        if git diff --quiet && git diff --cached --quiet; then
-            run_with_spinner "Updating void-packages repository (git pull)" git pull origin master
-        else
-            echo -e "${V_ERR}Local changes detected. Skipping repository update to preserve them.${V_RST}"
-        fi
+        configure_xbps_src
         cd - >/dev/null
     fi
-    configure_xbps_src
 }
 
-# Function to show help
+sync_repo() {
+    echo -e "${V_MAIN}Synchronizing repository (clean shallow clone overwrite)...${V_RST}"
+    local main_repo_url="https://github.com/void-linux/void-packages.git"
+    local tmp_refresh tmp_backup
+    tmp_refresh="$(mktemp -d)"
+    tmp_backup="$(mktemp -d)"
+
+    [ -d "$VURU_DIR/etc" ] && cp -a "$VURU_DIR/etc" "$tmp_backup/"
+    [ -d "$VURU_DIR/hostdir" ] && cp -a "$VURU_DIR/hostdir" "$tmp_backup/"
+
+    run_with_spinner "Cloning fresh void-packages to temporary directory" git clone --depth 1 "$main_repo_url" "$tmp_refresh"
+
+    find "$VURU_DIR" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+    cp -a "$tmp_refresh"/. "$VURU_DIR/"
+
+    [ -d "$tmp_backup/etc" ] && cp -a "$tmp_backup/etc/." "$VURU_DIR/etc/"
+    [ -d "$tmp_backup/hostdir" ] && cp -a "$tmp_backup/hostdir/." "$VURU_DIR/hostdir/"
+    rm -rf "$tmp_refresh" "$tmp_backup"
+
+    if [ -f "$SOURCE_INDEX_FILE" ]; then
+        echo -e "${V_MAIN}Re-applying externally added templates...${V_RST}"
+        local urls
+        urls=$(awk -F '\t' -v dir="$VURU_DIR" '$1 == dir {print $3 "\t" $4}' "$SOURCE_INDEX_FILE" | sort -u)
+        local reapply_success=true
+
+        while IFS=$'\t' read -r url branch; do
+            [ -z "$url" ] && continue
+            if ! apply_templates_from_url "$url" "$VURU_DIR" "$branch"; then
+                echo -e "${V_ERR}Warning: Failed to re-clone and apply $url.${V_RST}" >&2
+                reapply_success=false
+            fi
+        done <<< "$urls"
+
+        if [ "$reapply_success" = true ]; then
+            echo -e "${V_MAIN}External templates re-applied successfully.${V_RST}"
+        fi
+    fi
+    configure_xbps_src
+    echo -e "${V_MAIN}Synchronization complete.${V_RST}"
+}
+
 show_help() {
     cat <<EOF
 Usage: vouru <command> [arguments]
 
 Commands:
-  update                  Update the void-packages repo, xbps-src, and the system
-  add <git-url>           Clone a git repository and copy template folders into srcpkgs
+  sync                    Clean refresh of main repo + re-apply all added external repos
+  update                  Run 'sync', then update xbps-src and the system
+  add [-b <branch>] <url> Clone a git repository (shallow) and copy templates into srcpkgs
   search | -s <term>      Search for packages in srcpkgs matching <term>
   source                  List repositories added with 'vouru add' and count templates
-    install | -i [--restricted|-R] [--dont-answer-me] <pkg>  Search, compile, and install a package
+  install | -i [--restricted|-R] [--dont-answer-me] <pkg>  Search, compile, and install a package
   remove | -r <pkg>       Remove an installed package (xbps-remove)
   clean | -c              Remove the void-packages repository and purge cached packages
   set-repo [path]         Set the location of the void-packages repository (if no path, prompt)
   -h | --help             Show this help message
 
-If the main repository doesn't exist and no path is configured, it will be cloned to the default location.
-
 Examples:
-  vouru add https://github.com/user/vour-packages
+  vouru sync
+  vouru add https://github.com/user/void-packages
+  vouru add -b dev https://github.com/user/void-packages
   vouru search firefox
   vouru install --restricted discord
-  vouru -i -R spotify
-  vouru install --dont-answer-me firefox
-  vouru remove cmuspp-void
   vouru update
-  vouru clean
 EOF
 }
 
 record_template_source() {
     local pkg_name="$1"
     local source_url="$2"
+    local branch="${3:-}"
     local index_dir index_tmp
 
     index_dir="$(dirname "$SOURCE_INDEX_FILE")"
@@ -196,29 +244,31 @@ record_template_source() {
         awk -F '\t' -v repo="$VURU_DIR" -v pkg="$pkg_name" \
             '$1 != repo || $2 != pkg' "$SOURCE_INDEX_FILE" > "$index_tmp"
     fi
-    printf '%s\t%s\t%s\n' "$VURU_DIR" "$pkg_name" "$source_url" >> "$index_tmp"
+    printf '%s\t%s\t%s\t%s\n' "$VURU_DIR" "$pkg_name" "$source_url" "$branch" >> "$index_tmp"
     mv "$index_tmp" "$SOURCE_INDEX_FILE"
 }
 
 list_template_sources() {
     local total_templates official_templates imported_templates
     local official_url
-    local indexed_repo indexed_pkg indexed_url
+    local indexed_repo indexed_pkg indexed_url indexed_branch
     local source
     local source_order=()
     declare -A source_counts=()
+    declare -A source_branches=()
 
     ensure_repo
     total_templates="$(find "$VURU_DIR/srcpkgs" -mindepth 2 -maxdepth 2 -type f -name template -printf '.' | wc -c | tr -d ' ')"
     imported_templates=0
 
     if [ -f "$SOURCE_INDEX_FILE" ]; then
-        while IFS=$'\t' read -r indexed_repo indexed_pkg indexed_url; do
+        while IFS=$'\t' read -r indexed_repo indexed_pkg indexed_url indexed_branch; do
             [ "$indexed_repo" = "$VURU_DIR" ] || continue
             [ -f "$VURU_DIR/srcpkgs/$indexed_pkg/template" ] || continue
             if [ -z "${source_counts[$indexed_url]+present}" ]; then
                 source_order+=("$indexed_url")
                 source_counts["$indexed_url"]=0
+                source_branches["$indexed_url"]="$indexed_branch"
             fi
             source_counts["$indexed_url"]=$((source_counts["$indexed_url"] + 1))
             imported_templates=$((imported_templates + 1))
@@ -231,32 +281,31 @@ list_template_sources() {
     echo -e "${V_MAIN}Template sources:${V_RST}"
     echo -e "  ${V_PKG}${official_url:-$VURU_DIR}${V_RST} — ${official_templates} template(s) from the base repository"
     for source in "${source_order[@]}"; do
-        echo -e "  ${V_PKG}${source}${V_RST} — ${source_counts[$source]} imported template(s)"
+        local branch_info=""
+        if [ -n "${source_branches[$source]}" ]; then
+            branch_info=" (branch: ${source_branches[$source]})"
+        fi
+        echo -e "  ${V_PKG}${source}${V_RST}${branch_info} — ${source_counts[$source]} imported template(s)"
     done
     echo -e "${V_MAIN}\nTotal locally available: ${V_PKG}${total_templates}${V_RST} template(s)"
 }
 
-# Function to show the template and ask for confirmation
 review_template() {
     local template_file="$1"
     local pkg_name="$2"
-
     if [ ! -f "$template_file" ]; then
         echo -e "${V_ERR}Error: Template file for $pkg_name not found.${V_RST}"
         exit 1
     fi
-
     echo -e "${V_MAIN}Press any key to open the template for ${V_PKG}$pkg_name${V_MAIN} (press ${V_PKG}'q'${V_MAIN} to close the view when done):${V_RST}"
     read -s -n 1 < /dev/tty
     echo "------------------------------------------------------------"
-
     if command -v less &>/dev/null; then
         less -R "$template_file"
     else
         cat "$template_file"
         echo -e "${V_ERR}Note: 'less' is not installed. It is recommended for better viewing.${V_RST}"
     fi
-
     echo "------------------------------------------------------------"
     read -p "Do you want to continue with the compilation and installation of $pkg_name? (y/N): " confirm < /dev/tty
     if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
@@ -265,29 +314,23 @@ review_template() {
     fi
 }
 
-# Check if package is already installed
 is_pkg_installed() {
     xbps-query "$1" &>/dev/null
 }
 
-# Check if package exists in official repos
 is_pkg_in_official() {
     xbps-query -R "$1" &>/dev/null
 }
 
-# Function to search for packages (list only)
 search_packages() {
     local query="$1"
     ensure_repo
     cd "$VURU_DIR" || exit 1
-
     mapfile -t MATCHES < <(find srcpkgs -maxdepth 1 -type d -name "*${query}*" -printf "%f\n" | sort -u)
-
     if [ ${#MATCHES[@]} -eq 0 ]; then
         echo -e "${V_ERR}No packages found matching '$query'.${V_RST}"
         return 1
     fi
-
     echo -e "${V_MAIN}Matches for '$query':${V_RST}"
     local i=1
     for pkg in "${MATCHES[@]}"; do
@@ -297,25 +340,21 @@ search_packages() {
     done
 }
 
-# Function to install a package (search, compile, install)
 install_package() {
     local query="$1"
     local is_restricted="${2:-false}"
     local dont_answer_me="${3:-false}"
     ensure_repo
     cd "$VURU_DIR" || exit 1
-
     if [ "$dont_answer_me" = "true" ]; then
         mapfile -t MATCHES < <(find srcpkgs -maxdepth 1 -type d -name "$query" -printf "%f\n" | sort -u)
     else
         mapfile -t MATCHES < <(find srcpkgs -maxdepth 1 -type d -name "*${query}*" -printf "%f\n" | sort -u)
     fi
-
     if [ ${#MATCHES[@]} -eq 0 ]; then
         echo -e "${V_ERR}Error: No package found for '$query'.${V_RST}"
         exit 1
     fi
-
     local PKG_NAME
     if [ ${#MATCHES[@]} -eq 1 ]; then
         PKG_NAME="${MATCHES[0]}"
@@ -339,8 +378,6 @@ install_package() {
         fi
         PKG_NAME="${MATCHES[$((choice-1))]}"
     fi
-
-    # Check if already installed
     if is_pkg_installed "$PKG_NAME"; then
         echo -e "${V_MAIN}Package ${V_PKG}$PKG_NAME${V_MAIN} is already installed.${V_RST}"
         if [ "$dont_answer_me" = "true" ]; then
@@ -353,8 +390,6 @@ install_package() {
             fi
         fi
     fi
-
-    # Determine if package exists as a source template and/or in official repos
     local has_template=false
     local has_official=false
     if [ -d "srcpkgs/$PKG_NAME" ] && [ -f "srcpkgs/$PKG_NAME/template" ]; then
@@ -363,7 +398,6 @@ install_package() {
     if is_pkg_in_official "$PKG_NAME"; then
         has_official=true
     fi
-
     if [ "$dont_answer_me" = "true" ]; then
         if ! $has_template; then
             echo -e "${V_ERR}Error: No source template found for $PKG_NAME in srcpkgs.${V_RST}" >&2
@@ -410,17 +444,12 @@ install_package() {
         echo -e "${V_ERR}Use 'vouru add <git-url>' to add a template, or install from repos if available.${V_RST}" >&2
         exit 1
     fi
-
-    # Review the template before compiling (skipped with --dont-answer-me)
     if [ "$dont_answer_me" = "true" ]; then
         echo -e "${V_MAIN}Skipping template review (--dont-answer-me).${V_RST}"
     else
         review_template "srcpkgs/$PKG_NAME/template" "$PKG_NAME"
     fi
-
     echo -e "\n${V_MAIN}::${V_RST} Compiling ${V_PKG}$PKG_NAME${V_RST}..."
-    
-    # Handle restricted license temporarily
     local restricted_added=false
     if [ "$is_restricted" = "true" ]; then
         if ! grep -q '^XBPS_ALLOW_RESTRICTED=yes' "$VURU_DIR/etc/conf" 2>/dev/null; then
@@ -431,16 +460,12 @@ install_package() {
             echo -e "${V_MAIN}:: Restricted license already allowed in etc/conf${V_RST}"
         fi
     fi
-
     local compile_ret=0
     ./xbps-src pkg "$PKG_NAME" || compile_ret=$?
-
-    # Clean up restricted flag if we added it (revert to "no")
     if [ "$restricted_added" = "true" ]; then
         sed -i '/^XBPS_ALLOW_RESTRICTED=yes/d' "$VURU_DIR/etc/conf"
         echo -e "${V_MAIN}:: Reverted restricted license allowance in etc/conf${V_RST}"
     fi
-
     if [ $compile_ret -ne 0 ]; then
         echo -e "\n${V_ERR}Error: Compilation of $PKG_NAME failed.${V_RST}"
         echo -e "${V_ERR}Hint: If this is due to a restricted license, run:${V_RST}"
@@ -448,47 +473,36 @@ install_package() {
         echo -e "${V_ERR}Check $VURU_LOG for full details.${V_RST}"
         exit 1
     fi
-
     echo -e "\n${V_MAIN}:: Compilation successful. Installing...${V_RST}"
-    
-    # ONLY add the nonfree repository if --restricted was explicitly used
     if [ "$is_restricted" = "true" ]; then
         run_priv xbps-install -y --repository "$VURU_DIR/hostdir/binpkgs" --repository "$VURU_DIR/hostdir/binpkgs/nonfree" "$PKG_NAME"
     else
         run_priv xbps-install -y --repository "$VURU_DIR/hostdir/binpkgs" "$PKG_NAME"
     fi
-    
     echo -e "\n${V_MAIN}:: $PKG_NAME installed successfully.${V_RST}"
 }
 
-# Function to remove an installed package
 remove_package() {
     local pkg_name="$1"
-
     if ! is_pkg_installed "$pkg_name"; then
         echo -e "${V_ERR}Error: Package $pkg_name is not installed.${V_RST}" >&2
         exit 1
     fi
-
     echo -e "${V_MAIN}About to remove ${V_PKG}$pkg_name${V_RST}"
     read -p "Do you want to continue with the removal of $pkg_name? (y/N): " confirm < /dev/tty
     if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
         echo -e "${V_ERR}Operation cancelled by user.${V_RST}"
         exit 0
     fi
-
     run_priv xbps-remove -y -o "$pkg_name"
     echo -e "${V_MAIN}\n:: $pkg_name removed successfully (including orphaned packages).${V_RST}"
 }
 
-# Function for a full update (repository + xbps-src + system)
 update_all() {
-    ensure_repo
+    sync_repo
     cd "$VURU_DIR" || exit 1
-
     run_with_spinner "Running bootstrap-update" ./xbps-src bootstrap-update
     run_with_spinner "Updating packages with xbps-src (update-sys)" ./xbps-src update-sys
-
     echo -e "${V_MAIN}xbps-src updated.${V_RST}"
     echo -e "${V_MAIN}\nUpdating system with xbps-install...${V_RST}"
     run_priv xbps-install -Su
@@ -496,7 +510,6 @@ update_all() {
     echo -e "${V_MAIN}Update complete.${V_RST}"
 }
 
-# Function to clean the entire repository and purge cached packages
 clean_repo() {
     if [ ! -d "$VURU_DIR" ]; then
         echo -e "${V_MAIN}No repository found at $VURU_DIR. Nothing to clean.${V_RST}"
@@ -515,7 +528,6 @@ clean_repo() {
     fi
 }
 
-# Function to set repository location
 set_repo_location() {
     local new_path="$1"
     if [ -z "$new_path" ]; then
@@ -532,17 +544,23 @@ set_repo_location() {
     echo -e "${V_MAIN}Repository location set to: $VURU_DIR${V_RST}"
 }
 
-# Function to add templates from a git repository
 add_template() {
     local repo_url="$1"
+    local branch="$2"
     ensure_repo
     cd "$VURU_DIR" || exit 1
-
     local tmp_dir
     tmp_dir="$(mktemp -d)"
 
-    echo -e "${V_MAIN}Cloning template repository...${V_RST}"
-    if ! git clone "$repo_url" "$tmp_dir" >> "$VURU_LOG" 2>&1; then
+    local clone_args=("--depth" "1")
+    if [ -n "$branch" ]; then
+        clone_args+=("-b" "$branch")
+        echo -e "${V_MAIN}Cloning template repository (shallow, branch: $branch)...${V_RST}"
+    else
+        echo -e "${V_MAIN}Cloning template repository (shallow)...${V_RST}"
+    fi
+
+    if ! git clone "${clone_args[@]}" "$repo_url" "$tmp_dir" >> "$VURU_LOG" 2>&1; then
         echo -e "${V_ERR}Error: Failed to clone repository '$repo_url'.${V_RST}" >&2
         rm -rf "$tmp_dir"
         exit 1
@@ -552,7 +570,7 @@ add_template() {
     source_url="$(git -C "$tmp_dir" remote get-url origin 2>/dev/null || printf '%s' "$repo_url")"
 
     echo -e "${V_MAIN}Searching for templates...${V_RST}"
-    TEMPLATE_FILES=()
+    local TEMPLATE_FILES=()
     while IFS= read -r template_file; do
         TEMPLATE_FILES+=("$template_file")
     done < <(find -L "$tmp_dir" -type f -name "template" -not -path "*/.git/*" | sort -u)
@@ -599,7 +617,7 @@ add_template() {
                 local pkg_name
                 pkg_name="$(basename "$template_dir")"
                 echo -e "${V_MAIN}Added package ${V_PKG}$pkg_name${V_MAIN} from $repo_url${V_RST}"
-                record_template_source "$pkg_name" "$source_url"
+                record_template_source "$pkg_name" "$source_url" "$branch"
                 added=$((added+1))
             done
         fi
@@ -608,11 +626,9 @@ add_template() {
     for template_file in "${root_files[@]}" "${nested[@]}"; do
         local template_dir pkg_name
         template_dir="$(dirname "$template_file")"
-
         if [[ "$template_dir" == */.git* ]] || [[ "$template_dir" == *.git ]]; then
             continue
         fi
-
         if [ "$template_dir" = "$tmp_dir" ]; then
             local raw_name
             raw_name="$(grep -m1 '^pkgname=' "$template_file" | cut -d= -f2-)"
@@ -625,17 +641,15 @@ add_template() {
         else
             pkg_name="$(basename "$template_dir")"
         fi
-
         rm -rf "$template_dir/.git" 2>/dev/null || true
         mkdir -p "srcpkgs/$pkg_name"
         cp -rf "$template_dir"/. "srcpkgs/$pkg_name/"
         echo -e "${V_MAIN}Added package ${V_PKG}$pkg_name${V_MAIN} from $repo_url${V_RST}"
-        record_template_source "$pkg_name" "$source_url"
+        record_template_source "$pkg_name" "$source_url" "$branch"
         added=$((added+1))
     done
 
     rm -rf "$tmp_dir"
-
     if [ "$added" -eq 0 ]; then
         echo -e "${V_ERR}No packages were added (no templates found).${V_RST}" >&2
         exit 1
@@ -643,7 +657,6 @@ add_template() {
     echo -e "${V_MAIN}Added ${V_PKG}$added${V_MAIN} package(s) (existing ones were overwritten).${V_RST}"
 }
 
-# --- Argument Processing ---
 if [ $# -eq 0 ]; then
     show_help
     exit 0
@@ -653,6 +666,9 @@ case "$1" in
     -h|--help)
         show_help
         exit 0
+        ;;
+    sync)
+        sync_repo
         ;;
     update)
         update_all
@@ -711,15 +727,29 @@ case "$1" in
         set_repo_location "${2:-}"
         ;;
     add)
-        if [ -z "${2:-}" ]; then
+        shift
+        BRANCH_ARG=""
+        ADD_URL=""
+        while [[ $# -gt 0 ]]; do
+            case "$1" in
+                -b|--branch)
+                    BRANCH_ARG="$2"
+                    shift 2
+                    ;;
+                *)
+                    ADD_URL="$1"
+                    shift
+                    ;;
+            esac
+        done
+        if [ -z "$ADD_URL" ]; then
             echo -e "${V_ERR}Error: Missing git repository URL.${V_RST}"
             show_help
             exit 1
         fi
-        add_template "$2"
+        add_template "$ADD_URL" "$BRANCH_ARG"
         ;;
     *)
-        # If an argument is given that is not a command, assume it's for installation
         install_package "$1" "false"
         ;;
 esac
